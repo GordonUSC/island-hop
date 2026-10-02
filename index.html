@@ -1,0 +1,424 @@
+<!doctype html>
+<!-- STYLE: Lit toy diorama (Style Atlas 9 tilt-shift miniature: soft PBR toy materials, warm sun, deep sky, bloom on lights only) | WHY: the in-game world should look like the cover art, moving, and play like a game | ALT: Cel-shaded toon with ink outlines (the v2 look), if he wants it to read more like a cartoon -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow, noarchive, noimageindex">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Island Hop</title>
+<meta name="description" content="Gordon's fall 2026 as a lit toy-diorama game: fly a balloon to eight islands, play a toy on each, collect eight stamps, or race Joy Circuit solo or with a friend.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Figtree:wght@500;600;700&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+:root{
+  --ink:#2b2140;--paper:#fffaf0;--card:#fffaf0;--soft:#5b5170;--sun:#ffd23f;--pop:#ff4d6d;--sky:#b8dcff;--chip:#f1e9ff;
+  --shadow:0 4px 0 var(--ink);--edge:2px solid var(--ink);--ink:#3a2a1e;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--card:#231b3a;--paper:#fffaf0;--soft:#cfc6e6;--sky:#2a2150;--chip:#3a2f5c;color-scheme:dark}}
+:root[data-theme="dark"]{--card:#231b3a;--soft:#cfc6e6;--sky:#2a2150;--chip:#3a2f5c;color-scheme:dark}
+*{box-sizing:border-box;margin:0}
+html,body{min-height:100%}
+body{font:600 16px/1.45 Figtree,system-ui,sans-serif;color:var(--ink);background:linear-gradient(#5ea8ff,#b8dcff 60%,#ffd9b0);background-color:var(--sky)}
+:root[data-theme="dark"] body{color:var(--paper);background:linear-gradient(#1b1640,#4b2f78 60%,#8a3b6a)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) body{color:var(--paper);background:linear-gradient(#1b1640,#4b2f78 60%,#8a3b6a)}}
+h1,h2,h3{font-family:"Bricolage Grotesque",Figtree,sans-serif;letter-spacing:-0.02em;text-wrap:balance}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--sun);outline-offset:3px}
+.mono{font:600 12px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.05em;text-transform:uppercase}
+
+/* sticker UI: thick ink edge, hard drop shadow, springy press */
+.btn{border:var(--edge);background:var(--paper);color:var(--ink);border-radius:16px;padding:10px 16px;font-weight:700;box-shadow:var(--shadow);transition:transform .12s cubic-bezier(.2,1.8,.4,1),box-shadow .12s}
+.btn:hover{transform:translateY(-2px) rotate(-1deg)}
+.btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--ink)}
+.btn.go{background:var(--pop);color:#fff}
+.btn.sun{background:var(--sun)}
+
+/* ---------- reading layout (no WebGL / no JS / "read it instead") ---------- */
+.mast{max-width:760px;margin:0 auto;padding:28px 16px 10px;color:var(--ink)}
+.mast h1{font-size:clamp(44px,9vw,88px);line-height:.9;font-weight:800}
+.mast h1 em{font-style:normal;color:var(--pop)}
+.mast p{max-width:36ch;margin-top:10px}
+.book{max-width:760px;margin:0 auto;padding:6px 16px 60px;display:grid;gap:16px}
+.ch{background:var(--card);border:var(--edge);border-radius:22px;padding:20px;box-shadow:var(--shadow);color:var(--ink)}
+:root[data-theme="dark"] .ch{color:var(--paper)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ch{color:var(--paper)}}
+.ch .mono{color:var(--pop)}
+.ch h2{font-size:clamp(26px,4.6vw,38px);line-height:1.02;margin:6px 0 12px;font-weight:800}
+.ch .lead{font-weight:500;font-size:17px;margin:-4px 0 12px;text-wrap:pretty}
+.ch ul{padding:0;list-style:none;display:grid;gap:9px}
+.ch li{padding-left:24px;position:relative;font-weight:500;text-wrap:pretty}
+.ch a{color:inherit;text-decoration-thickness:2px;text-underline-offset:3px}
+.ch li::before{content:"";position:absolute;left:2px;top:.5em;width:11px;height:11px;border-radius:3px;background:var(--dot);border:2px solid var(--ink);transform:rotate(12deg)}
+.who{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.who span{background:var(--chip);border:2px solid var(--ink);border-radius:99px;padding:2px 10px;font-size:13px}
+.count{font-family:"Bricolage Grotesque";font-weight:800;color:var(--pop)}
+.ch .fly{display:none}
+.foot{max-width:760px;margin:0 auto;padding:0 16px 40px;font-size:14px;color:var(--ink)}
+
+/* ---------- game layout ---------- */
+#world,.hud{display:none}
+.has3d:not(.reading) body{overflow:hidden;height:100dvh}
+.has3d:not(.reading) #world{display:block;position:fixed;inset:0;width:100%;height:100%;touch-action:none}
+.has3d:not(.reading) .hud{display:block}
+.has3d:not(.reading) .mast,.has3d:not(.reading) .foot{display:none}
+.has3d:not(.reading) .book{position:fixed;z-index:20;right:18px;top:50%;translate:0 -50%;width:min(430px,calc(100vw - 36px));padding:0;display:none}
+.has3d:not(.reading) .book.open{display:block}
+.has3d:not(.reading) .ch{display:none;max-height:calc(100dvh - 190px);overflow:auto}
+.has3d:not(.reading) .ch.on{display:block;animation:card .55s cubic-bezier(.2,1.5,.4,1) both}
+.has3d:not(.reading) .ch .fly{display:block;margin-top:16px;width:100%}
+@keyframes card{from{opacity:0;transform:translateY(30px) scale(.85) rotate(-3deg)}}
+.ch .fly{border:var(--edge);background:var(--sun);color:var(--ink);border-radius:14px;padding:11px;font-weight:800;box-shadow:var(--shadow)}
+
+.hud .logo{position:fixed;left:18px;top:14px;z-index:5;font:800 28px/0.9 "Bricolage Grotesque";color:#fff;-webkit-text-stroke:6px var(--ink);paint-order:stroke fill;pointer-events:none}
+.hud .logo small{display:block;font:700 12px Figtree;-webkit-text-stroke:0;color:var(--ink);background:var(--sun);border:2px solid var(--ink);border-radius:99px;padding:2px 9px;margin-top:6px;width:max-content}
+.tools{position:fixed;top:14px;right:18px;z-index:6;display:flex;gap:8px}
+.tools .btn{padding:8px 12px;font-size:14px}
+.passport{position:fixed;left:50%;translate:-50% 0;bottom:14px;z-index:6;display:flex;gap:6px;align-items:flex-end;background:var(--card);border:var(--edge);border-radius:22px;padding:8px 10px;box-shadow:var(--shadow);max-width:calc(100vw - 20px)}
+.passport .tally{font:800 13px "Bricolage Grotesque";padding:0 6px 6px;white-space:nowrap;color:var(--ink)}
+:root[data-theme="dark"] .passport .tally{color:var(--paper)}
+.stamp{border:0;background:none;display:grid;justify-items:center;gap:2px;padding:0;width:56px}
+.stamp i{font:800 17px "Bricolage Grotesque";font-style:normal;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;border:3px dashed color-mix(in oklab,var(--c) 70%,var(--ink));color:var(--c);background:color-mix(in oklab,var(--c) 12%,transparent);transition:transform .2s}
+.stamp span{font-size:10px;font-weight:700;white-space:nowrap;opacity:.8}
+.stamp:hover i{transform:scale(1.12) rotate(-8deg)}
+.stamp.got i{background:var(--c);color:#fff;border:3px solid var(--ink);transform:rotate(-12deg);box-shadow:0 3px 0 var(--ink)}
+.stamp.fresh i{animation:thunk .7s cubic-bezier(.2,1.9,.4,1)}
+@keyframes thunk{0%{transform:scale(3) rotate(25deg);opacity:0}60%{transform:scale(.85) rotate(-14deg);opacity:1}}
+.prompt{position:fixed;left:50%;translate:-50% 0;bottom:104px;z-index:6;display:flex;gap:10px;align-items:center;background:var(--card);border:var(--edge);border-radius:18px;padding:8px 8px 8px 16px;box-shadow:var(--shadow);animation:bob 1.4s ease-in-out infinite;color:var(--ink)}
+:root[data-theme="dark"] .prompt{color:var(--paper)}
+@keyframes bob{50%{transform:translateY(-5px)}}
+.prompt b{font-family:"Bricolage Grotesque";font-size:18px}
+.banner{position:fixed;left:50%;translate:-50% 0;top:14px;z-index:7;width:min(520px,calc(100vw - 36px));background:var(--card);border:var(--edge);border-radius:20px;padding:12px 16px;box-shadow:var(--shadow);text-align:center;color:var(--ink)}
+:root[data-theme="dark"] .banner{color:var(--paper)}
+.banner h3{font-size:24px;font-weight:800}
+.banner p{font-weight:500;font-size:15px}
+.banner.shake{animation:shake .4s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+.meter{display:flex;gap:6px;justify-content:center;margin-top:8px}
+.meter b{width:22px;height:10px;border-radius:99px;border:2px solid var(--ink);background:transparent;transition:background .2s,transform .2s}
+.meter b.on{background:var(--sun);transform:scaleY(1.3)}
+.choices{display:flex;gap:10px;justify-content:center;margin-top:10px}
+.choices button{border:var(--edge);background:var(--sun);color:var(--ink);border-radius:14px;padding:9px 16px;font-weight:800;box-shadow:var(--shadow)}
+.overlay{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px;background:color-mix(in oklab,#1b1640 35%,transparent);backdrop-filter:blur(3px)}
+.trailer{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:.9}
+.overlay{isolation:isolate}
+.overlay[hidden],.prompt[hidden],.banner[hidden],.choices[hidden]{display:none}
+.panel{background:var(--card);border:var(--edge);border-radius:28px;box-shadow:0 8px 0 var(--ink);padding:26px;max-width:520px;width:100%;text-align:center;color:var(--ink);animation:card .6s cubic-bezier(.2,1.5,.4,1) both}
+:root[data-theme="dark"] .panel{color:var(--paper)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .panel,:root:not([data-theme="light"]) .banner,:root:not([data-theme="light"]) .prompt,:root:not([data-theme="light"]) .passport .tally{color:var(--paper)}}
+.panel h2{font-size:clamp(44px,9vw,72px);line-height:.9;font-weight:800;color:#fff;-webkit-text-stroke:5px var(--ink);paint-order:stroke fill}
+.panel h2 em{font-style:normal;color:var(--sun)}
+.panel p{margin:12px auto 0;max-width:34ch;font-weight:500}
+.panel .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;text-align:left;margin:16px auto 0;max-width:330px;font-size:14px;font-weight:500}
+.keys kbd{font:700 12px "JetBrains Mono";border:2px solid var(--ink);border-bottom-width:4px;border-radius:7px;padding:1px 6px;background:var(--paper);color:var(--ink);justify-self:end;white-space:nowrap}
+.loading{font-size:13px;opacity:.75;margin-top:12px}
+.loaded .loading{display:none}
+/* game HUD v3 */
+.backworld{display:none}.has3d.reading .backworld{display:inline-block;position:sticky;top:12px;z-index:30;margin:12px 16px 0;left:16px}
+
+.seen{max-width:760px;margin:0 auto 24px;padding:20px;background:var(--card);border:var(--edge);border-radius:22px;box-shadow:var(--shadow);color:var(--ink)}
+.seen h2{font-size:clamp(26px,4.6vw,36px);line-height:1.05;margin:6px 0 10px;font-weight:800}.seen h3{margin:16px 0 8px;font-size:20px}
+.seen p{font-weight:500;margin-bottom:10px;text-wrap:pretty}.seen ul{padding-left:18px;display:grid;gap:6px;font-weight:500}.seen .mono{color:var(--pop)}
+.has3d:not(.reading) .seen{display:none;position:fixed;z-index:40;left:50%;top:50%;translate:-50% -50%;width:min(620px,calc(100vw - 24px));max-height:calc(100dvh - 40px);overflow:auto;margin:0}
+.has3d:not(.reading) .seen.open{display:block;animation:card .5s cubic-bezier(.2,1.5,.4,1)}
+.seen .close{float:right}
+
+.circuithud{position:fixed;left:50%;translate:-50% 0;top:60px;z-index:7;display:flex;gap:14px;align-items:center;background:var(--ink);color:#fff;border-radius:99px;padding:6px 8px 6px 16px;font:800 18px "Bricolage Grotesque";box-shadow:0 4px 0 #0005}
+.circuithud[hidden]{display:none}.circuithud strong{font-size:24px;color:var(--sun);min-width:70px;text-align:right}.circuithud em{font-style:normal;color:#ff7bd5}.circuithud i{font-style:normal}
+.circuithud button{border:2px solid #fff;background:transparent;color:#fff;border-radius:99px;padding:3px 10px;font:700 12px Figtree}
+.credit{margin-top:12px;opacity:.7}
+
+.leave{position:absolute;right:10px;top:10px;border:2px solid var(--ink);background:transparent;border-radius:99px;padding:2px 10px;font-size:12px;font-weight:700;color:inherit}
+.keep{position:fixed;left:50%;bottom:120px;translate:-50% 0;z-index:12;width:min(400px,calc(100vw - 24px));background:var(--card);border:var(--edge);border-radius:22px;padding:16px 18px;box-shadow:0 6px 0 var(--ink);text-align:center;color:var(--ink)}
+:root[data-theme="dark"] .keep{color:var(--paper)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .keep{color:var(--paper)}}
+.keep[hidden]{display:none}.keep.pop{animation:card .55s cubic-bezier(.2,1.6,.4,1)}
+.keep h3{font-size:28px;font-weight:800;margin:2px 0 6px}.keep p{font-weight:500}.keep .mono{color:var(--pop)}.keep .btn{margin-top:12px}
+
+.gauges{position:fixed;left:18px;top:74px;z-index:6;display:grid;gap:6px;justify-items:start}
+.heat{display:flex;gap:5px;background:var(--card);border:var(--edge);border-radius:99px;padding:6px 9px;box-shadow:0 3px 0 var(--ink)}
+.heat i{width:22px;height:12px;border-radius:99px;border:2px solid var(--ink);background:linear-gradient(90deg,#ff7b2e calc(var(--f,1)*100%),transparent 0)}
+.heat.low{animation:shake .5s infinite}
+.joy{font:800 15px "Bricolage Grotesque";background:var(--sun);border:var(--edge);border-radius:99px;padding:3px 12px;color:var(--ink);box-shadow:0 3px 0 var(--ink)}
+.combo{font:800 34px "Bricolage Grotesque";color:#fff;-webkit-text-stroke:6px var(--ink);paint-order:stroke fill;min-height:1px}
+.combo.pop{animation:thunk .5s cubic-bezier(.2,1.9,.4,1)}
+.hint{position:fixed;left:50%;translate:-50% 0;top:16px;z-index:6;background:var(--ink);color:#fff;font-weight:700;padding:8px 16px;border-radius:99px;max-width:calc(100vw - 180px);text-align:center;box-shadow:0 4px 0 #0004}
+.hint.pop{animation:card .45s cubic-bezier(.2,1.5,.4,1)}
+.hint[hidden],.verb[hidden],.timer[hidden],.stick[hidden]{display:none}
+.verb{position:fixed;inset:0;z-index:9;display:grid;place-content:center;text-align:center;pointer-events:none}
+.verb b{display:block;font:800 clamp(64px,13vw,150px)/.9 "Bricolage Grotesque";color:var(--sun);-webkit-text-stroke:12px var(--ink);paint-order:stroke fill;transform:rotate(-4deg)}
+.verb small{font:800 22px Figtree;color:#fff;-webkit-text-stroke:5px var(--ink);paint-order:stroke fill}
+.verb.go{animation:verb 1.3s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes verb{0%{opacity:0;transform:scale(2.4) rotate(8deg)}18%{opacity:1;transform:scale(1)}80%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.8) translateY(-40px)}}
+.timer{position:fixed;left:50%;translate:-50% 0;top:150px;z-index:7;width:min(420px,70vw);height:12px;border:var(--edge);border-radius:99px;background:var(--card);overflow:hidden}
+.timer::after{content:"";position:absolute;inset:0;transform-origin:left;transform:scaleX(var(--left,1));background:linear-gradient(90deg,#ff4d6d,#ffd23f)}
+.speedlines{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0;background:repeating-conic-gradient(from 0deg at 50% 50%,#fff0 0deg 4deg,#ffffff55 4.4deg 4.8deg,#fff0 5.2deg 9deg);-webkit-mask:radial-gradient(circle at 50% 50%,#0000 38%,#000 75%);mask:radial-gradient(circle at 50% 50%,#0000 38%,#000 75%);transition:opacity .2s}
+.stick{position:fixed;z-index:8;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;border:3px solid #fff8;background:#2b214033;pointer-events:none}
+.stick i{position:absolute;left:27px;top:27px;width:50px;height:50px;border-radius:50%;background:#fff;border:var(--edge)}
+.burn{position:fixed;right:18px;bottom:110px;z-index:7;width:86px;height:86px;border-radius:50%;border:var(--edge);background:#ff7b2e;color:#fff;font:800 16px "Bricolage Grotesque";box-shadow:var(--shadow);display:none;touch-action:none}
+@media (pointer:coarse){.has3d:not(.reading) .burn{display:block}}
+.stamp .pips{display:flex;gap:2px;font-style:normal}
+.stamp .pips b{width:6px;height:6px;border-radius:50%;background:color-mix(in oklab,var(--ink) 25%,transparent)}
+.stamp .pips b.on{background:var(--sun);box-shadow:0 0 0 1px var(--ink)}
+.rate{margin-top:14px;padding-top:12px;border-top:2px dashed color-mix(in oklab,var(--ink) 30%,transparent)}
+.rate div{display:grid;grid-template-columns:repeat(3,auto 1fr);align-items:center;gap:2px 6px;margin-top:4px}
+.rate b{font-size:22px;color:color-mix(in oklab,var(--ink) 25%,transparent)}.rate b.on{color:#f4b400;-webkit-text-stroke:1.5px var(--ink)}
+.rate small{font-size:12px;font-weight:700}
+.rookie{font:800 18px "Bricolage Grotesque";color:var(--pop);margin-top:8px}
+@media (max-width:700px){.gauges{top:62px;left:12px}.hint{top:118px;max-width:calc(100vw - 24px);font-size:14px}.burn{bottom:96px}.timer{top:190px}.banner{padding-top:34px}.leave{top:8px}}
+@media (max-width:700px){
+  .hud .logo{font-size:22px}
+  .has3d:not(.reading) .book{left:12px;right:12px;width:auto;top:auto;bottom:96px;translate:none}
+  .has3d:not(.reading) .ch{max-height:44dvh}
+  .hud:has(#banner:not([hidden])) .logo{display:none}
+  .banner{top:60px}
+  .stamp{width:40px}.stamp i{width:34px;height:34px;font-size:15px}.stamp span{display:none}
+  .passport .tally{display:none}
+  .prompt{bottom:84px}
+  .keys .desk{display:none}
+}
+@media (min-width:701px){.keys .touch{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="world" data-balloon="models/balloon.glb.txt" aria-label="Island Hop: a floating world of eight toy islands with a hot-air balloon you fly between them"></canvas>
+
+<button class="btn go backworld" id="backWorld" type="button">← Back to the islands</button>
+<header class="mast">
+  <h1>Gordon's<br><em>fall, in eight islands</em></h1>
+  <p>Fall 2026 as a little game world. Here is everything in it, island by island.</p>
+</header>
+
+<main class="book" id="book">
+<article class="ch" data-kind="pier" id="sf" data-value="WONDER" data-model="models/pier.glb.txt" data-color="#ff6b3d" data-label="San Francisco" style="--dot:oklch(0.65 0.18 40)">
+  <p class="mono">Sep 24 to 27 · San Francisco</p>
+  <h2>Four days by the Bay</h2>
+  <p class="lead">Some trips become a little world of their own: music by the Bay, time with Dave and Trent, and a race-day game made to enjoy together. Even the festival guide had a way to find each other.</p>
+  <ul>
+    <li>Portola Saturday at Pier 80 with Dave and Trent, with a live 3D festival guide in your pocket, "find each other" button included.</li>
+    <li>Baku race day became a spoiler-free dossier plus <b>Baku Duel</b>, a two-player game made for Dave and Trent.</li>
+    <li>Four days under their roof, and the whole trip run from your phone.</li>
+  </ul>
+  <div class="who"><span>Dave</span><span>Trent</span></div>
+</article>
+
+<article class="ch" data-kind="studio" id="blizzard" data-value="LEARN" data-model="models/studio.glb.txt" data-color="#3a86ff" data-label="Blizzard" style="--dot:oklch(0.65 0.16 245)">
+  <p class="mono">Thu Oct 1 · Irvine</p>
+  <h2>Scholars, through the Blizzard doors</h2>
+  <p class="lead">On October 1, the learning happened on the other side of the studio doors. Ed welcomed the tour; Crystal helped make it possible. GGP scholars and USC students got to step inside a working game studio. Thank you for making room for curiosity.</p>
+  <ul>
+    <li>A campus tour hosted by Ed for GGP scholars and USC students. 44 signed up.</li>
+    <li>Joe drove. Alex was there. Your morning text: <q>We are on our way!</q></li>
+    <li>Before the visit, fifty notes went out to friends at Blizzard: on campus today with USC students and GGP scholars, hope our paths cross.</li>
+    <li>Up next with them: a tentative Spring 463 visit on Jan 28, 2027.</li>
+  </ul>
+  <div class="who"><span>Joe</span><span>Alex</span><span>Ed</span></div>
+</article>
+
+<article class="ch" data-kind="campus" id="teach" data-value="CREATE" data-model="models/campus.glb.txt" data-color="#e63946" data-label="Teaching" style="--dot:oklch(0.55 0.18 25)">
+  <p class="mono">Fall 2026 · USC</p>
+  <h2>The classroom is lit up</h2>
+  <p class="lead">A classroom can be a place to notice how the magic works. A character moving on ones or twos. A world changing as it becomes another medium. Then the better question: what will you make with what you notice?</p>
+  <ul>
+    <li>CTIN 290 went Spider-Verse on ones and twos, then Kaiju No. 8 and Blue Lock, with a new word on the board: <b>Stylization</b>.</li>
+    <li>Adaptation day: the same world in two media, Minecraft and The Last of Us side by side.</li>
+    <li>Eight syllabi delivered Sep 30: six brand new courses, plus 2 and 4 credit versions of 463.</li>
+    <li>CTIN 463 lives inside League of Legends all semester.</li>
+    <li>The dream pitch, still a proposal: Spring 463 built around GTA VI, scheduled to ship Nov 19. First guest on the books: Jeremy Crawford, Jan 20.</li>
+    <li>Nov 18: the USC Games Fall Alumni Mixer, then Weszt Hart in 463.</li>
+  </ul>
+  <div class="who"><span>Alex Choy</span><span>Jeremy Crawford</span><span>Weszt Hart</span></div>
+</article>
+
+<article class="ch" data-kind="table" id="ggp" data-value="BELONG" data-model="models/table.glb.txt" data-color="#8ac926" data-label="GGP" style="--dot:oklch(0.70 0.17 140)">
+  <p class="mono">GGP · Year eight</p>
+  <h2>Everyone gets a seat at the table</h2>
+  <p class="lead">The table keeps getting longer. Undergraduates and graduate students, teachers and partners, a game night that makes space for another chair. The joy here is not only getting through a door; it is helping someone else find theirs.</p>
+  <ul>
+    <li>Scholars is one program now. Grad students are CYSTEM Scholars, undergrads are GGP Scholars. Applications close Fri Oct 2, 9:59 PM.</li>
+    <li>The QR went to twelve faculty and partners. Games for Change, ESA, DePaul and CMU wrote back warmly.</li>
+    <li>The Houser family gave CYSTEM another year. Your words: <q>another year of belief in our CYSTEM scholars.</q></li>
+    <li>Sunblink said yes to 2027.</li>
+    <li>Zero Proof Board Game Night grew from 487 to 600+. The fourth one is Mon Mar 1, 2027, at The Foundry SF.</li>
+    <li>A gratitude dossier went to Drs. Lubinski and Benbow, from Cohort 3.</li>
+  </ul>
+  <div class="who"><span>Alex</span><span>Sinjin</span><span>Brennan</span></div>
+</article>
+
+<article class="ch" data-kind="arena" id="bass" data-value="FEEL" data-model="models/arena.glb.txt" data-color="#ff4fd8" data-label="Bass season" style="--dot:oklch(0.65 0.25 330)">
+  <p class="mono">Oct 3 to 24 · Bass season</p>
+  <h2>The arena is waiting</h2>
+  <p class="lead">The next few weeks have a soundtrack: Zeds Dead, NiteHarts, LateNite, and Pokémon Night Out. The lineups matter. So do the people beside you when the room comes alive.</p>
+  <ul>
+    <li data-when="2026-10-03">Sat Oct 3: Zeds Dead, <i>Journey of a Lifetime</i>, Grand Park.</li>
+    <li data-when="2026-10-09">Oct 9 to 11: NiteHarts at Snapdragon Stadium with Brennan, Kelly and Kara.</li>
+    <li data-when="2026-10-11">Sun Oct 11: LateNite at Pechanga Arena with Alison Wonderland, one year after your first NiteHarts.</li>
+    <li data-when="2026-10-24">Sat Oct 24: Pokémon Night Out at Intuit Dome, Marshmello and Alison Wonderland, with Brennan. His two worlds in one room.</li>
+    <li>The soundtrack for all of it: <a href="https://open.spotify.com/playlist/6xDMtVx20inhwcEFrWiPWc" target="_blank" rel="noopener"><b>Island Hop Fall 2026</b> on Spotify</a>.</li>
+  </ul>
+  <div class="who"><span>Brennan</span><span>Kelly</span><span>Kara</span></div>
+</article>
+
+<article class="ch" data-kind="court" id="dodge" data-model="models/court.glb.txt" data-color="#e76f51" data-label="Dodgeball" data-value="PLAY" style="--dot:oklch(0.66 0.17 40)">
+  <p class="mono">Las Vegas, and every Tuesday · a playful tribute</p>
+  <h2>Stop trying to make catch happen</h2>
+  <p class="lead">Dodgeball has kept turning up in your life: spirited teams, Las Vegas, and the delight of still being in the game. Here is a little court for that joy. Dodge, catch, and have another go.</p>
+  <ul>
+    <li>Your words, 2016: <q>I play Dodgeball in LAS Vegas and we ARE on the Fox OCHO.</q></li>
+    <li>Your words, 2020: <q>I miss playing Dodgeball in Las Vegas.</q></li>
+    <li>On Sep 30 you asked WeHo Dodgeball the only question that matters: <q>What time does registration start? midnight? noon?</q></li>
+    <li>On Oct 1 you asked about Cloud9 jerseys, calling yourself a <q>glorious key contributor</q> in your 50s.</li>
+    <li>To Matt: <q>Las Vegas 2027, you will be a ringer by then.</q></li>
+  </ul>
+  <div class="who"><span>Matt</span><span>the Sin City crew</span></div>
+</article>
+
+<article class="ch" data-kind="desert" id="ps" data-value="CELEBRATE" data-model="models/desert.glb.txt" data-color="#ffb703" data-label="Palm Springs" style="--dot:oklch(0.72 0.17 60)">
+  <p class="mono">Nov 6 to 9 · Palm Springs</p>
+  <h2>Be Included, and fifty-six</h2>
+  <p class="lead">Palm Springs is ahead: Pride, Shannon's welcome, Joe, Mason and Alex, and a birthday on November 9. Be Included is a fitting theme for a weekend built around being together.</p>
+  <ul>
+    <li data-when="2026-11-06">Palm Springs Pride turns 40 with the theme <i>Be Included</i>. Parade Sunday Nov 8, 10 AM.</li>
+    <li>With Joe, Mason and Alex, staying with Shannon.</li>
+    <li data-when="2026-11-09">Monday Nov 9: you turn 56. <span class="count" data-countdown="2026-11-09">That's in a few weeks.</span></li>
+  </ul>
+  <div class="who"><span>Joe</span><span>Mason</span><span>Alex</span><span>Shannon</span></div>
+</article>
+
+<article class="ch" data-kind="voxel" id="home" data-value="RETURN" data-model="models/voxel.glb.txt" data-color="#2ec4b6" data-label="Home" style="--dot:oklch(0.62 0.15 145)">
+  <p class="mono">Home · All roads</p>
+  <h2>All roads lead home</h2>
+  <p class="lead">In Gordtopia, a path is more than a way across the map. It is something built with James, Henry and Oscar, a landmark remembered, and a way back to the bell. All roads lead home.</p>
+  <ul>
+    <li>Gordtopia went online Sep 15: one hub, eight pages, built with James, Henry and Oscar.</li>
+    <li>After Hours 1.0 went live Sep 21. Edition 2, <i>The Mixer</i>, followed two days later.</li>
+    <li>Good-morning memes went out to twelve friends, and an evening wave followed.</li>
+    <li>The Style Atlas: ten 3D styles and sixteen bass styles, Jersey Club included. This world is one of them, the tilt-shift diorama.</li>
+    <li data-when="2026-12-12">December: John Summit at the Coliseum on the 12th, then Stevie Wonder's <i>Songs in the Key of Life</i> at 50 on the 19th, Row 1. New Year's Eve at Countdown with Joe, your rave.</li>
+  </ul>
+  <div class="who"><span>Joe</span><span>James</span><span>Henry</span><span>Oscar</span></div>
+</article>
+</main>
+<section class="seen" id="seenText" aria-label="What we see">
+  <p class="mono">What we see · Astra and Darby, our perspective</p>
+  <h2>You keep making belonging tangible</h2>
+  <p>Our reading: you keep making belonging tangible. A player can see someone like themselves on the field. A student can walk through a studio door. A friend can take a seat at a table, or leave a landmark in a world you build together.</p>
+  <p>And not everything has to mean something. A good catch, a ridiculous flight, a song that arrives at the right moment. This world should give you those too.</p>
+  <p>Across these chapters, enjoyment often becomes an invitation. That is the connection the growing crew makes visible.</p>
+  <h3>How the game carries that</h3>
+  <ul>
+    <li><b>Passengers climb aboard with every stamp.</b> Belonging, made into a mechanic.</li>
+    <li><b>Landings are graded but never failed.</b> Arriving matters more than the score.</li>
+    <li><b>Dodgeball and Joy Circuit</b> are play for its own sake: the ridiculous flight, the good catch, a friend on the same device.</li>
+    <li><b>Keepsakes</b> reward curiosity with your own words and dates.</li>
+    <li><b>Relaxed flight and Just read it.</b> Your life is never locked behind a win.</li>
+  </ul>
+</section>
+<p class="foot">Married to Joe since May 3, 2014. Built Oct 2, 2026, from Darby's notes. Islands lifted to 3D from Higgsfield art with Meshy; music, voice and sound by ElevenLabs; sky light from Poly Haven's CC0 "cloud_layers" by Greg Zaal; Joy Circuit, chapter leads and art direction by Astra.</p>
+
+<div class="hud">
+  <div class="logo">Island Hop<small>Gordon's fall 2026</small></div>
+  <div class="tools">
+    <button class="btn" id="sound" type="button" aria-pressed="true">♪ On</button>
+    <button class="btn" id="theme" type="button" aria-label="Day or night">☾</button>
+    <button class="btn" id="seenBtn" type="button">What we see</button>
+    <button class="btn" id="help" type="button" aria-label="How to play">?</button>
+  </div>
+  <nav class="passport" id="passport" aria-label="Passport stamps"><span class="tally"><span id="count">0</span> / 8 stamps<br><span id="stars">0</span> / 24 ★<br><span id="keepCount">0</span> / 10 keepsakes</span></nav>
+  <div class="gauges" aria-live="polite"><div class="heat" id="heat" title="Burner heat"><i></i><i></i><i></i></div><div class="joy"><span id="joy">0</span> joy</div><div class="combo" id="combo"></div></div>
+  <div class="hint" id="hint" hidden></div>
+  <div class="verb" id="verb" hidden></div>
+  <div class="timer" id="timer" hidden></div>
+  <div class="speedlines" id="speedlines" aria-hidden="true"></div>
+  <div class="stick" id="stick" hidden><i></i></div>
+  <div class="circuithud" id="circuitHud" hidden><b id="cPlayer">SOLO</b><span><i id="cTime">90</i>s</span><strong id="cScore">0</strong><em id="cCombo"></em><button type="button" id="cExit">Exit circuit</button></div>
+  <div class="overlay" id="circuitEnd" hidden><div class="panel"><h2 id="cEndTitle">Joy Circuit</h2><p id="cEndText"></p><div class="row"><button class="btn go" id="cEndGo" type="button">Run it back</button><button class="btn" id="cEndExit" type="button">Back to the islands</button></div></div></div>
+  <button class="burn" id="burn" type="button" aria-label="Hold to fire the burner">BURN</button>
+  <div class="prompt" id="prompt" hidden><span><b id="promptName">Island</b></span><button class="btn go" id="land" type="button">Land and play</button></div>
+  <div class="banner" id="banner" hidden><h3 id="bannerTitle"></h3><p id="bannerText"></p><div class="meter" id="meter"></div><div class="choices" id="choices" hidden></div><button class="leave" id="leave" type="button">Leave island</button></div>
+  <div class="keep" id="keep" hidden role="dialog" aria-label="Keepsake found"><p class="mono" id="keepNo"></p><h3 id="keepTitle"></h3><p id="keepText"></p><button class="btn sun" id="keepClose" type="button">Keep flying</button></div>
+
+  <div class="overlay" id="start">
+    <video class="trailer" src="audio/trailer.mp4" autoplay muted loop playsinline aria-hidden="true"></video>
+    <div class="panel">
+      <h2>Island <em>Hop</em></h2>
+      <p>Your fall, as eight floating islands. Ride the star trails, thread the rings, stick the landing, win each island's toy. Three stars per island. Eight stamps open the Long Walk Home. Or race the same course in Joy Circuit, solo or pass-the-device.</p>
+      <div class="keys">
+        <kbd class="desk">Hold Space</kbd><span class="desk">fire the burner: rise and surge</span>
+        <kbd class="desk">W A S D</kbd><span class="desk">steer; follow the star trail</span>
+        <kbd class="desk">Land on target</kbd><span class="desk">sink onto it; dead center is a Bullseye</span>
+        <kbd class="desk">Click island</kbd><span class="desk">autopilot there (E to auto-land)</span>
+        <kbd class="touch">Left thumb</kbd><span class="touch">steer, anywhere on the left</span>
+        <kbd class="touch">Hold BURN</kbd><span class="touch">rise and surge</span>
+        <kbd class="touch">Tap island</kbd><span class="touch">autopilot there</span>
+      </div>
+      <div class="row"><button class="btn go" id="go" type="button">▶ Start flying</button><button class="btn" id="relaxed" type="button">Relaxed flight</button></div>
+      <div class="row"><button class="btn sun" id="circuit1" type="button">Joy Circuit · solo</button><button class="btn sun" id="circuit2" type="button">Joy Circuit · 2 players</button><button class="btn" id="read" type="button">Just read it</button></div>
+      <p><button class="btn" id="seenBtn2" type="button">What we see</button></p>
+      <p class="mono credit">Joy Circuit scoring by Astra · world and flight by Darby</p>
+      <p class="loading">Loading the islands…</p>
+    </div>
+  </div>
+  <div class="overlay" id="finale" hidden>
+    <div class="panel">
+      <h2>All roads lead <em>home</em></h2>
+      <p>San Francisco, Blizzard, the classroom, GGP, bass season, dodgeball, Palm Springs, home. That is a fall. It's in his game. A few places. A few games. A lot of people. There is room for another chapter.</p>
+      <p class="mono" id="finaleStars"></p>
+      <p class="rookie" id="rookie" hidden>Rookie of the Year: every star on every island.</p>
+      <p><a href="https://www.canva.com/d/N_aIrHQgdbiqZDb" target="_blank" rel="noopener">Your fall postcard, in Canva</a></p>
+      <div class="row"><button class="btn sun" id="finaleClose" type="button">Keep flying</button><button class="btn" id="replay" type="button">Reset stamps</button></div>
+    </div>
+  </div>
+</div>
+
+<audio id="music" src="audio/theme.mp3" loop preload="none"></audio>
+<audio id="voice" src="audio/voice.mp3" preload="none"></audio>
+<audio data-sfx="pop" src="audio/pop.mp3" preload="auto"></audio>
+<audio data-sfx="stamp" src="audio/stamp.mp3" preload="auto"></audio>
+<audio data-sfx="win" src="audio/win.mp3" preload="auto"></audio>
+<audio data-sfx="dice" src="audio/dice.mp3" preload="auto"></audio>
+<audio data-sfx="whoosh" src="audio/whoosh.mp3" preload="auto"></audio>
+<audio data-sfx="cheer" src="audio/cheer.mp3" preload="auto"></audio>
+<audio data-sfx="bounce" src="audio/bounce.mp3" preload="auto"></audio>
+<audio data-sfx="vo8" src="audio/vo8.mp3" preload="none"></audio>
+<audio data-sfx="vo0" src="audio/vo0.mp3" preload="none"></audio>
+<audio data-sfx="vo1" src="audio/vo1.mp3" preload="none"></audio>
+<audio data-sfx="vo2" src="audio/vo2.mp3" preload="none"></audio>
+<audio data-sfx="vo3" src="audio/vo3.mp3" preload="none"></audio>
+<audio data-sfx="vo4" src="audio/vo4.mp3" preload="none"></audio>
+<audio data-sfx="vo5" src="audio/vo5.mp3" preload="none"></audio>
+<audio data-sfx="vo6" src="audio/vo6.mp3" preload="none"></audio>
+<audio data-sfx="vo7" src="audio/vo7.mp3" preload="none"></audio>
+
+<script>
+(function(){
+  var today=new Date();today.setHours(0,0,0,0);
+  document.querySelectorAll('[data-countdown]').forEach(function(el){
+    var n=Math.round((new Date(el.dataset.countdown+'T00:00:00')-today)/864e5);
+    el.textContent=n>1?n+' days to go.':n===1?'Tomorrow!':n===0?'Today. Happy birthday!':'';
+  });
+  var root=document.documentElement,music=document.getElementById('music'),voice=document.getElementById('voice');
+  function dark(){return root.dataset.theme==='dark'}
+  var th=document.getElementById('theme');th.textContent=dark()?'☀':'☾';
+  th.onclick=function(){root.dataset.theme=dark()?'light':'dark';th.textContent=dark()?'☀':'☾';document.dispatchEvent(new Event('themechange'))};
+  var snd=document.getElementById('sound'),on=true;
+  snd.onclick=function(){on=!on;snd.textContent=on?'♪ On':'♪ Off';snd.setAttribute('aria-pressed',on);if(on){music.play().catch(function(){})}else{music.pause();voice.pause()}};
+  document.getElementById('go').onclick=function(){
+    document.getElementById('start').hidden=true;
+    music.volume=.32;music.play().catch(function(){});
+    voice.volume=1;voice.play().catch(function(){});
+  };
+  document.getElementById('read').onclick=function(){root.classList.add('reading');document.getElementById('start').hidden=true;music.pause();scrollTo(0,0)};
+  document.getElementById('backWorld').onclick=function(){root.classList.remove('reading');scrollTo(0,0);if(on){music.play().catch(function(){})}};
+  document.getElementById('help').onclick=function(){document.getElementById('start').hidden=false};
+  var seen=document.getElementById('seenText'),sc=document.createElement('button');sc.className='btn close';sc.type='button';sc.textContent='Close';sc.onclick=function(){seen.classList.remove('open')};seen.prepend(sc);
+  function openSeen(){seen.classList.add('open')}
+  document.getElementById('seenBtn').onclick=openSeen;document.getElementById('seenBtn2').onclick=openSeen;
+})();
+</script>
+<script type="module" src="game.js"></script>
+</body>
+</html>
