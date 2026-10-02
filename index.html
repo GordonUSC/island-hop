@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- STYLE: Lit toy diorama (Style Atlas 9 tilt-shift miniature: soft PBR toy materials, warm sun, deep sky, bloom on lights only) | WHY: the in-game world should look like the cover art, moving, and play like a game | ALT: Cel-shaded toon with ink outlines (the v2 look), if he wants it to read more like a cartoon -->
+<!-- STYLE: Lit toy diorama with a Balatro-style score layer (Style Atlas 9 miniature, soft PBR, warm sun; CRT-scanline tally card with fire) | WHY: the world stays the cover, and the new decisions need a legible, juicy readout | ALT: a full-screen card-table UI for the toys, if he wants it to read more like Balatro itself -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -69,6 +69,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .has3d:not(.reading) .ch.on{display:block;animation:card .55s cubic-bezier(.2,1.5,.4,1) both}
 .has3d:not(.reading) .ch .fly{display:block;margin-top:16px;width:100%}
 @keyframes card{from{opacity:0;transform:translateY(30px) scale(.85) rotate(-3deg)}}
+.has3d:not(.reading) .ch .fly.again{margin-top:8px;background:var(--paper)}
 .ch .fly{border:var(--edge);background:var(--sun);color:var(--ink);border-radius:14px;padding:11px;font-weight:800;box-shadow:var(--shadow)}
 
 .hud .logo{position:fixed;left:18px;top:14px;z-index:5;font:800 28px/0.9 "Bricolage Grotesque";color:#fff;-webkit-text-stroke:6px var(--ink);paint-order:stroke fill;pointer-events:none}
@@ -102,7 +103,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .choices button{border:var(--edge);background:var(--sun);color:var(--ink);border-radius:14px;padding:9px 16px;font-weight:800;box-shadow:var(--shadow)}
 .overlay{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px;background:color-mix(in oklab,#1b1640 35%,transparent);backdrop-filter:blur(3px)}
 .trailer{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-1;opacity:.9}
-.overlay{isolation:isolate}
+.overlay{isolation:isolate;overflow-y:auto;overscroll-behavior:contain}
+@media (max-height:560px){.overlay{place-items:start center;padding:10px}.overlay .panel{padding:16px 18px;border-radius:20px}.overlay .panel h2{font-size:clamp(24px,6vh,34px)}}
 .overlay[hidden],.prompt[hidden],.banner[hidden],.choices[hidden]{display:none}
 .panel{background:var(--card);border:var(--edge);border-radius:28px;box-shadow:0 8px 0 var(--ink);padding:26px;max-width:520px;width:100%;text-align:center;color:var(--ink);animation:card .6s cubic-bezier(.2,1.5,.4,1) both}
 :root[data-theme="dark"] .panel{color:var(--paper)}
@@ -116,11 +118,41 @@ button{font:inherit;color:inherit;cursor:pointer}
 .loading{font-size:13px;opacity:.75;margin-top:12px}
 .loaded .loading{display:none}
 /* game HUD v3 */
+.slot{position:fixed;left:18px;top:178px;z-index:6;display:flex;gap:8px;align-items:center;background:var(--paper);border:var(--edge);border-radius:14px;padding:5px 10px 5px 5px;box-shadow:0 3px 0 var(--ink);color:var(--ink);max-width:230px}
+.slot[hidden]{display:none}.slot img{width:38px;border-radius:6px}.slot b{display:block;font:800 14px "Bricolage Grotesque"}.slot small{font-size:12px}
+.draftpanel{max-width:880px}.dcards{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+.dcard{width:220px;border:var(--edge);border-radius:18px;background:var(--paper);color:var(--ink);padding:10px;display:grid;gap:6px;text-align:left;box-shadow:0 5px 0 var(--ink);transition:transform .2s cubic-bezier(.2,1.6,.4,1)}
+.dcard:hover,.dcard:focus-visible{transform:translateY(-6px) rotate(-1.5deg)}
+.dcard img{width:100%;border-radius:12px}.dcard b{font:800 18px "Bricolage Grotesque"}.dcard small{font-size:14px;font-weight:500;line-height:1.35}
+@media (max-width:700px){.dcard{width:44vw}.slot{top:150px;left:12px}}
+
+.scoretally{position:fixed;inset:0;z-index:28;display:grid;place-content:center;justify-items:center;gap:8px;background:radial-gradient(ellipse at 50% 40%,#1b1236dd,#0b0718f0);color:#fff;font-family:"Bricolage Grotesque",Figtree,sans-serif;text-align:center}
+.scoretally[hidden]{display:none}
+.scoretally.best #tallyTarget{color:#ffd23f;font-weight:800;animation:card .4s cubic-bezier(.2,1.6,.4,1) both}
+.scoretally::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,#0000 0 2px,#ffffff08 2px 3px);mix-blend-mode:overlay}
+.scoretally .mono{color:#ffd23f;letter-spacing:.12em}
+.scoretally ol{list-style:none;padding:0;margin:4px 0 10px;display:grid;gap:4px;min-width:min(380px,86vw)}
+.scoretally li{display:flex;justify-content:space-between;gap:20px;padding:6px 14px;border-radius:12px;background:#ffffff12;font:700 16px Figtree;animation:card .35s cubic-bezier(.2,1.6,.4,1) both}
+.scoretally li.base b{color:#6fd0ff}.scoretally li.mult b{color:#ff6b8a}
+.scoretally .eq{display:flex;align-items:center;gap:14px;font-size:52px;font-weight:800}
+.scoretally .chips,.scoretally .multv{min-width:90px;padding:4px 16px;border-radius:16px;border:3px solid #fff}
+.scoretally .chips{background:#1f6fe0}.scoretally .multv{background:#e63946}
+.scoretally .bump{animation:thunk .3s cubic-bezier(.2,1.9,.4,1)}
+.scoretally .total{font-size:clamp(56px,11vw,110px);font-weight:800;line-height:1;min-height:1em;-webkit-text-stroke:3px #ffd23f;color:#fff}
+.scoretally.clear .total{color:#ffd23f;-webkit-text-stroke:3px #fff}
+.scoretally.miss .total{color:#cfc6e6}
+.scoretally.fire .total{text-shadow:0 0 18px #ff7b2e,0 -10px 30px #ff4d6d,0 -24px 46px #ffd23f;animation:flame .25s ease-in-out infinite alternate}
+@keyframes flame{to{transform:translateY(-3px) scale(1.03)}}
+.cardart{display:block;width:118px;float:right;margin:0 0 8px 12px;border-radius:12px;box-shadow:0 6px 0 var(--ink);transform:rotate(3deg);transition:transform .3s}
+.cardart:hover{transform:rotate(-2deg) scale(1.06)}
+@media (prefers-reduced-motion:reduce){.scoretally li,.scoretally .bump,.scoretally.fire .total{animation:none}}
+
 .backworld{display:none}.has3d.reading .backworld{display:inline-block;position:sticky;top:12px;z-index:30;margin:12px 16px 0;left:16px}
 
-.seen{max-width:760px;margin:0 auto 24px;padding:20px;background:var(--card);border:var(--edge);border-radius:22px;box-shadow:var(--shadow);color:var(--ink)}
+.seen{max-width:760px;margin:0 auto 24px;padding:24px 28px;background:var(--paper);border:var(--edge);border-radius:22px;box-shadow:var(--shadow);color:var(--ink);font-size:18px;line-height:1.6}
+.seen h2,.seen h3{line-height:1.15}
 .seen h2{font-size:clamp(26px,4.6vw,36px);line-height:1.05;margin:6px 0 10px;font-weight:800}.seen h3{margin:16px 0 8px;font-size:20px}
-.seen p{font-weight:500;margin-bottom:10px;text-wrap:pretty}.seen ul{padding-left:18px;display:grid;gap:6px;font-weight:500}.seen .mono{color:var(--pop)}
+.seen p{font-weight:500;margin-bottom:10px;text-wrap:pretty}.seen ul{padding-left:18px;display:grid;gap:6px;font-weight:500}.seen .mono{color:#9a2340}
 .has3d:not(.reading) .seen{display:none;position:fixed;z-index:40;left:50%;top:50%;translate:-50% -50%;width:min(620px,calc(100vw - 24px));max-height:calc(100dvh - 40px);overflow:auto;margin:0}
 .has3d:not(.reading) .seen.open{display:block;animation:card .5s cubic-bezier(.2,1.5,.4,1)}
 .seen .close{float:right}
@@ -181,6 +213,125 @@ button{font:inherit;color:inherit;cursor:pointer}
 }
 @media (min-width:701px){.keys .touch{display:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* Astra's presenter CSS (feedback.css 6452ec25), inlined at build */
+.player-feedback{color:#173c39;background:#fff8e9f5;border:1px solid #fffdf3;border-radius:22px;padding:16px 18px;width:min(360px,calc(100vw - 24px));font:14px/1.4 Avenir Next,Avenir,system-ui;box-shadow:0 5px 0 #b6a48c33,0 12px 32px #173d3929;overflow-wrap:anywhere}
+.player-feedback [hidden]{display:none!important}.pf-mode{color:#4b695d;text-transform:uppercase;letter-spacing:.07em;font-size:11px}.pf-goal{font-size:20px;line-height:1.2;margin:7px 0}.pf-next{margin:7px 0 12px}.pf-meter{width:100%;height:8px;accent-color:#bd7140}.pf-count{font-size:12px;margin:4px 0}.pf-score{display:grid;grid-template-columns:1fr auto;align-items:center;border-top:1px solid #46625426;padding-top:10px;margin-top:12px}.pf-score strong{font-size:26px;font-variant-numeric:tabular-nums}.pf-score small{grid-column:1/-1;color:#4b695d}.pf-risk{background:#ffe09a;color:#352713;border-radius:8px;padding:9px;font-size:13px}.pf-event{color:#286044;margin:10px 0;min-height:1.4em}.pf-equipment{border-left:3px solid #bd7140;padding-left:10px;font-size:13px}.pf-more{font-size:12px;margin-top:10px}.pf-more summary{cursor:pointer;padding:6px 0;color:#365a4b}.pf-more li{margin:8px 0}.pf-save{color:#4b695d}.pf-more summary:focus-visible{outline:2px solid #bd7140;outline-offset:3px}
+@media(max-width:600px){.player-feedback{font-size:13px;padding:12px}.pf-goal{font-size:17px}.pf-score strong{font-size:22px}}
+
+/* placement: one panel replaces the old stamp tally and pack slot */
+.journey{position:fixed;left:18px;top:168px;z-index:6;width:min(300px,calc(100vw - 24px))!important;max-height:calc(100vh - 290px);overflow:auto}
+.journey{pointer-events:none}.journey .pf-more{pointer-events:auto}
+.journey .pf-goal{font-family:"Bricolage Grotesque",Figtree,sans-serif}
+.journey .pf-event:not(:empty){animation:card .4s cubic-bezier(.2,1.6,.4,1) both}
+.passport .tally,.hud .slot{display:none!important}
+@media (max-width:700px){.journey{top:auto;bottom:150px;left:12px;width:min(250px,64vw)!important;padding:10px 12px!important}.journey .pf-score,.journey .pf-more,.journey .pf-count,.journey .pf-meter,.journey .pf-mode{display:none!important}.hud:has(#banner:not([hidden])) .journey{display:none}}
+/* Astra's responsive.css (bdc11975) and playful-shell.css (78b6569c), unchanged, then Darby's overrides: never cover BURN or catch the steering thumb */
+/* Integration override: retain actionable progress on narrow screens.
+   Append after shell placement rules. Presenter source stays unchanged. */
+@media (max-width:700px){
+  .hud .journey,
+  .hud:has(#banner:not([hidden])) .journey{
+    display:block;top:auto;bottom:92px;left:12px;
+    width:calc(100vw - 24px)!important;box-sizing:border-box;
+    max-height:min(31dvh,250px);padding:10px 12px!important;
+    overflow:auto;overscroll-behavior:contain;pointer-events:auto;
+  }
+  .journey .pf-mode,.journey .pf-meter{display:none!important}
+  .journey .pf-goal{font-size:16px;margin:0 0 3px}
+  .journey .pf-next{font-size:12px;line-height:1.35;margin:0 0 5px}
+  .journey .pf-count{display:block!important;font-size:11px;margin:3px 0}
+  .journey .pf-score{display:grid!important;margin:5px 0 0;padding:5px 0 0;font-size:12px}
+  .journey .pf-score strong{font-size:22px;line-height:1.1}
+  .journey .pf-score small{font-size:11px}
+  .journey .pf-risk{padding:6px 8px;margin:5px 0;font-size:12px}
+  .journey .pf-event{min-height:0;font-size:12px;margin:5px 0}
+  .journey .pf-equipment{margin:5px 0;font-size:12px}
+  .journey .pf-more{display:block!important;margin-top:2px}
+  .journey .pf-more summary{min-height:44px;box-sizing:border-box;display:flex;align-items:center;padding:0}
+  .journey .pf-more summary::before{content:'▸';margin-right:7px}
+  .journey .pf-more[open] summary::before{content:'▾'}
+  .hud .journey[hidden],.journey [hidden]{display:none!important}
+  :root:has(#book.open) .hud .journey{display:none!important}
+}
+
+/* Warm, tactile game chrome. Both day and night world lighting retain legible cards.
+   Append after the shell styles; this changes presentation, never scoring or saves. */
+:root{--play-ink:#173c39;--play-muted:#49685d;--play-paper:#fff8e9;--play-line:#e5d9bd;--play-lagoon:#176b61;--play-sun:#ffd16f;--play-coral:#b94034;--play-shadow:0 4px 0 #ae986d55,0 10px 24px #173c3922}
+.hud .tools .btn,.hud .banner,.hud .prompt,.hud .passport,.overlay .panel,.keep,.has3d .ch{
+  background:var(--play-paper);color:var(--play-ink);border:1px solid #fffdf5;
+  box-shadow:var(--play-shadow);border-radius:22px;
+}
+.hud .tools{gap:6px}
+.hud .tools .btn{border-radius:14px;font-weight:700;min-height:44px;box-shadow:0 3px 0 #ad986954,0 4px 12px #173c3917}
+.hud .tools .btn:hover{transform:translateY(-2px)}
+.hud .logo{color:#fff8e9;-webkit-text-stroke:5px #173c39}
+.hud .logo small{background:var(--play-sun);color:var(--play-ink);border:1px solid #fff4c1;box-shadow:0 2px 0 #94704b44;letter-spacing:.04em}
+.hud .banner{top:84px;padding:16px 20px 18px;text-align:left;border-top:5px solid var(--play-sun)}
+.hud .banner h3{font-size:24px;line-height:1.1;margin:5px 0 8px}
+.hud .banner p{color:var(--play-muted);font-size:14px;line-height:1.45}
+.hud .choices{justify-content:flex-start;gap:8px;margin-top:13px}
+.hud .choices button,.panel .btn,.ch .fly{border:1px solid #fff7d3;border-radius:14px;min-height:44px;background:var(--play-sun);color:var(--play-ink);box-shadow:0 4px 0 #a87b4050;font-weight:800;transition:transform .12s,box-shadow .12s}
+.hud .choices button[data-a="BANK"],.hud .choices button[data-a="build"],.panel .btn.go{background:var(--play-lagoon);color:#fff8e9;border-color:#77b9a3;box-shadow:0 4px 0 #11483f}
+.hud .choices button[data-a="PRESS"]{background:#ffe1ac;color:#70421d;border-color:#f7c781}
+.hud .choices button:active,.panel .btn:active{transform:translateY(3px);box-shadow:0 1px 0 #a87b4050}
+.hud .leave{background:#e9eadb;color:var(--play-muted);border:0;border-radius:10px;min-height:36px}
+.hud .hint{background:#173c39ed;color:#fff8e9;border:1px solid #e1ead344;box-shadow:0 3px 12px #173c3922}
+.hud .passport{padding:8px 10px;border-radius:24px;gap:5px}
+.hud .stamp i{border:2px dashed color-mix(in srgb,var(--c),#173c39 35%);color:color-mix(in srgb,var(--c),#173c39 40%);background:color-mix(in srgb,var(--c) 10%,#fff8e9)}
+.hud .stamp.got i{color:white;background:color-mix(in srgb,var(--c),#173c39 18%);border:2px solid #fff8e9;box-shadow:0 3px 0 #ad986966}
+.hud .stamp span{color:var(--play-ink);opacity:1}
+.player-feedback{border:1px solid #fffdf5;background:#fff8e9f5;box-shadow:var(--play-shadow)}
+.draftpanel h2{color:var(--play-ink)}
+.draftpanel p{color:var(--play-muted)}
+.dcard{border:1px solid var(--play-line);background:#fffdf6;color:var(--play-ink);box-shadow:0 5px 0 #ad986944;border-radius:20px;padding:12px}
+.dcard small{color:var(--play-muted)}
+.dcard:hover,.dcard:focus-visible{border-color:#176b61;box-shadow:0 5px 0 #176b6144}
+.scoretally{background:radial-gradient(ellipse at 50% 35%,#236e5fea,#113d39fa);color:#fff8e9}
+.scoretally::after{display:none}
+.scoretally .chips{background:#176b61;border-color:#93d1b0}
+.scoretally .multv{background:#b94034;border-color:#ffb4a0}
+.scoretally li.base b{color:#a1edc8}.scoretally li.mult b{color:#ffc7ad}
+.scoretally .total{color:#fff8e9;-webkit-text-stroke:0;letter-spacing:-.045em}
+.scoretally.clear .total{color:#ffd16f;-webkit-text-stroke:0}
+.scoretally.fire .total{animation:none;text-shadow:0 6px 0 #102f2c55,0 0 35px #ffd16f44}
+.hud button:focus-visible,.panel button:focus-visible{outline:3px solid #176b61;outline-offset:4px}
+@media(max-width:700px){
+  .hud .banner{top:64px;padding:34px 16px 14px;border-radius:22px}
+  .hud .banner h3{font-size:22px}
+  .hud .tools .btn{font-size:11px;padding:6px 8px;min-height:44px}
+  .hud .tools{top:8px;right:8px;gap:4px}
+  .hud .banner .leave{top:4px;right:10px}
+  .draftpanel{max-height:calc(100dvh - 24px);overflow:auto}
+  .dcards{gap:10px}.dcard{width:calc(50% - 5px);padding:8px}.dcard b{font-size:16px}.dcard small{font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){.hud .choices button,.panel .btn{transition:none}.hud .choices button:active,.panel .btn:active{transform:none}}
+
+/* Explicit theme selectors override the legacy system-dark text rules. */
+:root .overlay .panel,:root .hud .banner,:root .hud .prompt,:root .has3d .ch{color:var(--play-ink)}
+.overlay .panel p,.overlay .panel .keys,.overlay .panel .mono{color:var(--play-muted)}
+
+.player-feedback .pf-event:empty{display:none}
+
+@media (max-width:700px){.hud .journey,.hud:has(#banner:not([hidden])) .journey{pointer-events:none}.journey .pf-more{pointer-events:auto}.hud .journey,.hud:has(#banner:not([hidden])) .journey{width:calc(100vw - 128px)!important}}
+/* planning toys (island depth): room for named options; the 3D island stays visible below */
+.hud .banner:has(.depth-options){width:min(780px,calc(100vw - 36px))}.hud .choices:has(.depth-options){display:block}
+@media (min-height:700px) and (min-width:701px){.hud .depth-options{max-height:min(46dvh,420px)!important}}
+@media (min-width:701px) and (max-width:1180px){.hud:has(.depth-options) .journey{display:none}}
+@media (max-height:500px){
+  .hud .banner{top:58px;left:auto;right:12px;translate:none;padding:8px 14px 10px;width:min(420px,calc(100vw - 310px))}.hud .banner h3{font-size:17px;margin:0 0 3px;padding-right:100px}.hud .banner p{font-size:12px;line-height:1.3;padding-right:100px}.hud .choices{margin-top:6px}.hud .choices button{min-height:38px;padding:6px 12px}
+  .hud .journey,.hud:has(#banner:not([hidden])) .journey{display:block;top:auto;bottom:62px;left:12px;width:min(272px,36vw)!important;max-height:calc(100dvh - 128px);overflow:auto;overscroll-behavior:contain;padding:8px 10px!important;pointer-events:none}
+  .journey .pf-mode,.journey .pf-meter{display:none!important}
+  .journey .pf-goal{font-size:15px;margin:0 0 2px}.journey .pf-next{font-size:12px;line-height:1.3;margin:0 0 3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .journey .pf-count{display:block!important;font-size:11px;margin:2px 0}.journey .pf-risk{padding:4px 8px;margin:4px 0;font-size:12px}.journey .pf-score{display:grid!important;margin:4px 0 0;padding:4px 0 0}.journey .pf-score strong{font-size:18px}.journey .pf-score small{font-size:11px}
+  .journey .pf-event{min-height:0;font-size:12px;margin:3px 0;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}.journey .pf-equipment{font-size:12px;margin:3px 0}
+  .journey .pf-more{display:block!important;margin-top:2px;pointer-events:auto}.journey .pf-more summary{min-height:36px;display:flex;align-items:center;padding:0;font-size:12px}
+  .hud .journey:has(.pf-more[open]){pointer-events:auto;max-height:calc(100dvh - 76px)}
+  .hud .passport{bottom:6px;padding:4px 8px}.hud .stamp span{display:none}
+  .hud .logo{display:none}.hud .gauges{top:12px;left:12px;grid-auto-flow:column;align-items:center}
+  .hud .journey,.hud:has(#banner:not([hidden])) .journey{max-height:calc(100dvh - 134px)}
+}
+}
+@media (max-width:480px){.tools{gap:4px;right:8px;top:10px}.tools .btn{padding:6px 8px;font-size:12px;white-space:nowrap;min-height:36px}.hud .logo{display:none}.gauges{top:56px}}
 </style>
 </head>
 <body>
@@ -324,12 +475,17 @@ button{font:inherit;color:inherit;cursor:pointer}
   <div class="tools">
     <button class="btn" id="sound" type="button" aria-pressed="true">♪ On</button>
     <button class="btn" id="theme" type="button" aria-label="Day or night">☾</button>
+    <button class="btn" id="tallySpeed" type="button" title="Score tally speed">1x</button>
+    <button class="btn" id="voiceBtn" type="button" aria-pressed="true">Voice on</button>
     <button class="btn" id="seenBtn" type="button">What we see</button>
     <button class="btn" id="help" type="button" aria-label="How to play">?</button>
   </div>
-  <nav class="passport" id="passport" aria-label="Passport stamps"><span class="tally"><span id="count">0</span> / 8 stamps<br><span id="stars">0</span> / 24 ★<br><span id="keepCount">0</span> / 10 keepsakes</span></nav>
+  <nav class="passport" id="passport" aria-label="Passport stamps"><span class="tally"><span id="count">0</span> / 8 stamps<br><span id="stars">0</span> / 24 ★<br><span id="keepCount">0</span> / 11 keepsakes</span></nav>
   <div class="gauges" aria-live="polite"><div class="heat" id="heat" title="Burner heat"><i></i><i></i><i></i></div><div class="joy"><span id="joy">0</span> joy</div><div class="combo" id="combo"></div></div>
   <div class="hint" id="hint" hidden></div>
+  <div class="slot" id="slot" hidden></div>
+  <section class="journey" id="journey" hidden></section>
+  <div class="overlay" id="draft" hidden><div class="panel draftpanel"><h2>Choose <em>one</em></h2><p id="draftNote"></p><div class="dcards" id="draftCards"></div></div></div>
   <div class="verb" id="verb" hidden></div>
   <div class="timer" id="timer" hidden></div>
   <div class="speedlines" id="speedlines" aria-hidden="true"></div>
@@ -339,6 +495,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   <button class="burn" id="burn" type="button" aria-label="Hold to fire the burner">BURN</button>
   <div class="prompt" id="prompt" hidden><span><b id="promptName">Island</b></span><button class="btn go" id="land" type="button">Land and play</button></div>
   <div class="banner" id="banner" hidden><h3 id="bannerTitle"></h3><p id="bannerText"></p><div class="meter" id="meter"></div><div class="choices" id="choices" hidden></div><button class="leave" id="leave" type="button">Leave island</button></div>
+  <div class="scoretally" id="tally" hidden aria-live="polite"><p class="mono" id="tallyTitle"></p><ol id="tallyList"></ol><div class="eq"><span class="chips" id="tallyBase">0</span><i>×</i><span class="multv" id="tallyMult">1</span></div><div class="total" id="tallyTotal"></div><p class="mono" id="tallyTarget"></p></div>
   <div class="keep" id="keep" hidden role="dialog" aria-label="Keepsake found"><p class="mono" id="keepNo"></p><h3 id="keepTitle"></h3><p id="keepText"></p><button class="btn sun" id="keepClose" type="button">Keep flying</button></div>
 
   <div class="overlay" id="start">
@@ -357,7 +514,8 @@ button{font:inherit;color:inherit;cursor:pointer}
       </div>
       <div class="row"><button class="btn go" id="go" type="button">▶ Start flying</button><button class="btn" id="relaxed" type="button">Relaxed flight</button></div>
       <div class="row"><button class="btn sun" id="circuit1" type="button">Joy Circuit · solo</button><button class="btn sun" id="circuit2" type="button">Joy Circuit · 2 players</button><button class="btn" id="read" type="button">Just read it</button></div>
-      <p><button class="btn" id="seenBtn2" type="button">What we see</button></p>
+      <p><button class="btn" id="seenBtn2" type="button">What we see</button> <button class="btn" id="storyBtn" type="button" aria-pressed="false">Story voice off</button></p>
+      <p class="audioprefs"><button class="btn" id="musicBtn" type="button" aria-pressed="true">Music on</button> <button class="btn" id="fxBtn" type="button" aria-pressed="true">Effects on</button></p>
       <p class="mono credit">Joy Circuit scoring by Astra · world and flight by Darby</p>
       <p class="loading">Loading the islands…</p>
     </div>
@@ -374,7 +532,10 @@ button{font:inherit;color:inherit;cursor:pointer}
   </div>
 </div>
 
-<audio id="music" src="audio/theme.mp3" loop preload="none"></audio>
+<audio id="music" loop preload="none"></audio>
+<audio id="mToy" src="audio/music/toy.mp3" loop preload="auto"></audio>
+<audio id="mBoss" src="audio/music/boss.mp3" loop preload="auto"></audio>
+<audio id="mFinale" src="audio/music/finale.mp3" loop preload="auto"></audio>
 <audio id="voice" src="audio/voice.mp3" preload="none"></audio>
 <audio data-sfx="pop" src="audio/pop.mp3" preload="auto"></audio>
 <audio data-sfx="stamp" src="audio/stamp.mp3" preload="auto"></audio>
@@ -409,7 +570,6 @@ button{font:inherit;color:inherit;cursor:pointer}
   document.getElementById('go').onclick=function(){
     document.getElementById('start').hidden=true;
     music.volume=.32;music.play().catch(function(){});
-    voice.volume=1;voice.play().catch(function(){});
   };
   document.getElementById('read').onclick=function(){root.classList.add('reading');document.getElementById('start').hidden=true;music.pause();scrollTo(0,0)};
   document.getElementById('backWorld').onclick=function(){root.classList.remove('reading');scrollTo(0,0);if(on){music.play().catch(function(){})}};

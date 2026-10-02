@@ -11,6 +11,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import * as JC from './astra/circuit.js';
+import * as TT from './astra/tabletop.mjs';
+import { mountFeedback } from './astra/feedback.mjs';
+import { createIslandToy } from './astra/depth/phase3-adapter.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 const ENV = new URLSearchParams(location.search).get('env') || 'hdr';
 const LOOK = new URLSearchParams(location.search).get('look') || 'lit';
@@ -268,7 +271,7 @@ const progress = chapters.map(() => ({ done: false, stars: [false, false, false]
 chapters.forEach((c, i) => {
   const s = document.createElement('button'); s.type = 'button'; s.className = 'stamp'; s.style.setProperty('--c', c.dataset.color);
   s.innerHTML = `<i>${i + 1}</i><em class="pips"><b></b><b></b><b></b></em><span>${c.dataset.label}</span>`; s.title = c.dataset.label;
-  s.onclick = () => { if (islands[i].done) openCard(i); else autopilot(i); };
+  s.onclick = () => { if (islands[i].done) openCard(i); else autopilot(i, true); }; /* Astra: an unstamped stop flies there and lands */
   hud.pass.appendChild(s); stampEls.push(s);
 });
 let joyCount = 0;
@@ -276,7 +279,11 @@ try {
   const sv = JSON.parse(localStorage.getItem('islandhop-v3') || 'null');
   if (sv && Array.isArray(sv.p)) { sv.p.forEach((p, i) => { if (progress[i] && p && Array.isArray(p.stars)) progress[i] = { done: !!p.done, stars: [0, 1, 2].map((k) => !!p.stars[k]) }; }); joyCount = +sv.joy || 0; }
 } catch (e) {}
-function save() { try { localStorage.setItem('islandhop-v3', JSON.stringify({ p: progress, joy: joyCount })); } catch (e) {} }
+const saveFails = new Set(); let saveAny = false;
+function store(key, val) { try { localStorage.setItem(key, val); saveFails.delete(key); saveAny = true; return true; } catch (e) { saveFails.add(key); return false; } }
+function save() { return store('islandhop-v3', JSON.stringify({ p: progress, joy: joyCount })); }
+/* a failed key keeps retrying quietly while the page is open, so progress lands if storage recovers before a reload */
+setInterval(() => { if (saveFails.has('islandhop-v3')) save(); if (saveFails.has('islandhop-depth') && typeof DEPTH === 'object') store('islandhop-depth', JSON.stringify(DEPTH)); if (saveFails.has('islandhop-best') && typeof BEST === 'object') store('islandhop-best', JSON.stringify(BEST)); if (typeof pending !== 'undefined' && pending && pending.chosen && !saveFails.size) finalizePending(); }, 3000);
 function paintStamps() {
   progress.forEach((p, i) => {
     islands[i].done = p.done; stampEls[i].classList.toggle('got', p.done);
@@ -295,6 +302,7 @@ function hideBanner() { hud.banner.hidden = true; hud.choices.hidden = true; hud
 function openCard(i) {
   chapters.forEach((c, j) => c.classList.toggle('on', j === i));
   const st = progress[i].stars, card = chapters[i];
+  if (!card.querySelector('.cardart')) { const im = document.createElement('img'); im.className = 'cardart'; im.alt = ''; im.src = `art/cards/c${i}.webp`; card.insertBefore(im, card.firstChild.nextSibling); }
   card.querySelector('.rate')?.remove();
   const r = document.createElement('div'); r.className = 'rate';
   r.innerHTML = `<span class="mono">Island rating</span><div>${['Toy won', 'Landing', 'Rings'].map((n, k) => `<b class="${st[k] ? 'on' : ''}">★</b><small>${n}</small>`).join('')}</div>`;
@@ -308,6 +316,8 @@ function closeCard() {
 }
 chapters.forEach((c) => {
   const b = document.createElement('button'); b.type = 'button'; b.className = 'fly'; b.textContent = 'Fly on →'; b.onclick = closeCard; c.appendChild(b);
+  /* replay a stamped island: chase missing stars and your best (the stamp is already yours) */
+  const ag = document.createElement('button'); ag.type = 'button'; ag.className = 'fly again'; ag.textContent = 'Play again'; ag.onclick = () => { const i = player.at; hud.card.classList.remove('open'); chapters.forEach((x) => x.classList.remove('on')); if (islands[i]) beginGame(i); }; c.appendChild(ag);
 });
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && hud.card.classList.contains('open')) closeCard(); });
 let hintKey = '';
@@ -375,6 +385,7 @@ function tapTargets(isl, o) {
     tap(obj) {
       const m = items.find((x) => x === obj || x.getObjectById(obj.id)); if (!m || !m.visible) return;
       m.visible = false; got++; setMeter(got); play('pop', 0.7);
+      scoreBase(15, o.tag || 'Catch'); const now = performance.now(); if (now - (o.lastHit || 0) < 900) scoreMult(1, 'Quick chain'); o.lastHit = now;
       const w = new THREE.Vector3(); m.getWorldPosition(w); burst(w, 26, 5, 4);
       if (o.counter) floatText(w, o.counter(got));
       if (got === o.n) later(winGame, 350);
@@ -392,7 +403,7 @@ function onesTwos(isl) {
   hud.choices.innerHTML = '<button type="button" data-v="24">On ones</button><button type="button" data-v="12">On twos</button>';
   hud.choices.onclick = (e) => {
     const v = +e.target.dataset.v; if (!v) return;
-    if (v === fps) { right++; setMeter(right); play('pop', 0.6); burst(ball.getWorldPosition(new THREE.Vector3()), 24, 5, 4); floatText(ball.getWorldPosition(new THREE.Vector3()), fps === 12 ? 'Twos!' : 'Ones!'); }
+    if (v === fps) { right++; setMeter(right); scoreBase(40, 'Called it'); if (right > 1) scoreMult(1, 'Streak'); play('pop', 0.6); burst(ball.getWorldPosition(new THREE.Vector3()), 24, 5, 4); floatText(ball.getWorldPosition(new THREE.Vector3()), fps === 12 ? 'Twos!' : 'Ones!'); }
     else { play('whoosh', 0.5); floatText(ball.getWorldPosition(new THREE.Vector3()), 'Look again'); hud.banner.classList.remove('shake'); void hud.banner.offsetWidth; hud.banner.classList.add('shake'); }
     if (right >= 3) { hud.choices.onclick = null; hud.choices.hidden = true; later(winGame, 300); return; }
     if (v === fps) { round++; pick(); }
@@ -432,7 +443,7 @@ function diceGame(isl) {
     anim = dice.map((d, k) => { if (held[k]) return null; const e = UP[vals[k]]; const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(e[0], e[1], e[2])); q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * 6)); return { d, q, spin: new THREE.Vector3(Math.random() * 20 - 10, Math.random() * 20 - 10, Math.random() * 20 - 10), t: 0 }; }).filter(Boolean);
     setTimeout(() => {
       rolling = 0; const kinds = new Set(vals).size;
-      if (kinds < 3) { over = true; floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 4, 0)), kinds === 1 ? 'TRIPLE!' : 'PAIR!'); later(winGame, 600); return; }
+      if (kinds < 3) { scoreBase(kinds === 1 ? 160 : 70, kinds === 1 ? 'Triple' : 'Pair'); held.forEach((h) => { if (h) scoreMult(1, 'Held die'); }); for (let r = 0; r < rollsLeft; r++) scoreMult(1, 'Roll left over'); over = true; floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 4, 0)), kinds === 1 ? 'TRIPLE!' : 'PAIR!'); later(winGame, 600); return; }
       if (rollsLeft <= 0) { over = true; floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 4, 0)), 'So close!'); later(() => { if (game && game.isl === isl) { gameRoot.clear(); const old = game; game = diceGame(isl); game.isl = isl; game.elapsed = 0; game.limit = old.limit; } }, 1100); return; }
       label();
     }, 1300);
@@ -463,7 +474,7 @@ function beatGame(isl) {
     const t = (performance.now() - start) / 1000, ph = (t % beat) / beat, idx = Math.round(t / beat);
     if (idx === lastBeat) return;
     const off = Math.min(ph, 1 - ph) * beat;
-    if (off < 0.16) { lastBeat = idx; hits++; setMeter(hits); flash = 1; play('pop', 0.5); burst(ring.getWorldPosition(new THREE.Vector3()), 40, 9, 6); floatText(ring.getWorldPosition(new THREE.Vector3()), ['Drop!', 'Bass!', 'Lasers!', 'LateNite!'][hits - 1] || 'Yes!'); if (hits >= 4) later(winGame, 400); }
+    if (off < 0.16) { if (off < 0.06) scoreMult(1, 'Perfect drop'); else scoreBase(45, 'On the beat'); scoreBase(20, 'Drop'); lastBeat = idx; hits++; setMeter(hits); flash = 1; play('pop', 0.5); burst(ring.getWorldPosition(new THREE.Vector3()), 40, 9, 6); floatText(ring.getWorldPosition(new THREE.Vector3()), ['Drop!', 'Bass!', 'Lasers!', 'LateNite!'][hits - 1] || 'Yes!'); if (hits >= 4) later(winGame, 400); }
     else { floatText(ring.getWorldPosition(new THREE.Vector3()), ph < 0.5 ? 'Late' : 'Early'); }
   };
   return {
@@ -487,7 +498,7 @@ function chestGame(isl) {
   let taps = 0, wob = 0, open = 0;
   showBanner('Open the chest', 'Gordtopia keeps its treasure here. Tap the chest three times.', 3);
   const tap = () => {
-    if (taps >= 3) return; taps++; setMeter(taps); wob = 1; play(taps < 3 ? 'pop' : 'win', 0.6);
+    if (taps >= 3) return; taps++; setMeter(taps); scoreBase(50, 'Chest tap'); wob = 1; play(taps < 3 ? 'pop' : 'win', 0.6);
     if (taps === 3) { open = 0.0001; burst(chest.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1.5, 0)), 120, 6, 10); floatText(chest.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2.5, 0)), 'All roads lead home'); later(winGame, 1100); }
   };
   return {
@@ -544,9 +555,11 @@ function courtGame(isl) {
   const tag = (() => { const cv = document.createElement('canvas'); cv.width = 256; cv.height = 96; const x = cv.getContext('2d'); x.font = '800 64px "Bricolage Grotesque", system-ui'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineWidth = 12; x.strokeStyle = '#3a2a1e'; x.strokeText('YOU', 128, 48); x.fillStyle = '#ffd23f'; x.fillText('YOU', 128, 48); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true })); s.scale.set(1.1, 0.42, 1); s.position.y = 1.55; s.renderOrder = 9; return s; })();
   me.add(body, head, band, you, tag); me.position.set(0, 1, NEAR); gameRoot.add(me);
   const crew = ['Darby', 'Astra'].map((n, k) => { const g = new THREE.Group(); const b = M(new THREE.CapsuleGeometry(0.2, 0.3, 6, 10), k ? 0x2ec4b6 : 0xff7b2e); b.position.y = 0.38; const h = M(new THREE.SphereGeometry(0.18, 12, 10), 0xd9d4e8); h.position.y = 0.82; g.add(b, h); g.position.set(k ? 1.6 : -1.6, 1, FAR); gameRoot.add(g); return g; });
+  let survived = 0;
   const balls = []; let spawnT = 0.6, caught = 0, hearts = 3, score = 0, chain = 0, over = false, inv = 0, dash = 0;
-  const goal = 5, best = (() => { try { return +localStorage.getItem('islandhop-dodge-best') || 0; } catch (e) { return 0; } })();
-  showBanner('Dodge red. Catch gold.', `Move with W A S D or the stick. Tap or Space to catch a gold ball and fire it back. ${goal} catches wins.${relaxed ? ' Relaxed: no outs.' : ''} Your best: ${best}.`, goal);
+  const goal = 5, best = +BEST.court || 0; /* one score model: the tally's Base x Mult; best is the final result in the same units */
+  const pts = () => (game && game.sc ? game.sc.base * game.sc.mult : 0), sub = () => (game && game.sc ? `${game.sc.base} \u00d7 ${game.sc.mult} = ${pts()}` : '0');
+  showBanner('Dodge red. Catch gold.', `Move with W A S D or the stick. Tap or Space to catch a gold ball and fire it back. ${goal} catches, or survive 30 seconds. Catching heals a heart.${relaxed ? ' Relaxed: no outs.' : ''} Your best: ${best}.`, goal);
   const ballGeo = new THREE.SphereGeometry(0.2, 16, 12);
   function throwBall() {
     const gold = Math.random() < 0.38, from = crew[Math.floor(Math.random() * 2)];
@@ -561,10 +574,10 @@ function courtGame(isl) {
     if (over) return;
     const b = balls.find((x) => x.gold && !x.back && !x.out && x.m.position.distanceTo(me.position.clone().add(new THREE.Vector3(0, 0.7, 0))) < 1.15);
     if (b) {
-      b.back = true; b.v.set((Math.random() - 0.5) * 2, 2.5, -9); caught++; chain++; score += 50 * Math.min(5, chain); setMeter(caught);
+      b.back = true; b.v.set((Math.random() - 0.5) * 2, 2.5, -9); caught++; chain++; scoreBase(50, 'Catch'); if (chain > 1) scoreMult(1, 'Catch chain'); if (!relaxed && hearts < 3) { hearts++; floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2.6, 0)), 'HEAL'); } freeze = 0.05; setMeter(caught);
       burst(b.m.getWorldPosition(new THREE.Vector3()), 30, 6, 5); chime(3 + chain, 0.15); play('cheer', 0.55); trauma = Math.min(1, trauma + 0.25);
       floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2, 0)), chain > 1 ? `CATCH x${chain}` : 'CATCH!');
-      if (caught >= goal) { over = true; try { if (score > best) localStorage.setItem('islandhop-dodge-best', score); } catch (e) {} floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 4, 0)), score > best ? `NEW BEST ${score}` : `${score} points`); later(winGame, 700); }
+      if (caught >= goal) { if (chain >= 3) game.niceCatch = true; over = true; floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 4, 0)), `${pts()} so far`); later(winGame, 700); }
     } else { dash = 0.25; }
   }
   return {
@@ -577,19 +590,21 @@ function courtGame(isl) {
       me.position.z = Math.max(0.4, Math.min(NEAR + 0.6, me.position.z + iz * sp * dt));
       me.rotation.z = -ix * 0.15; inv = Math.max(0, inv - dt); me.visible = inv > 0 ? Math.sin(t * 40) > 0 : true;
       crew.forEach((c, k) => { c.position.x += Math.sin(t * (0.8 + k * 0.3) + k * 2) * dt * 1.2; c.userData.kick = Math.max(0, (c.userData.kick || 0) - dt * 3); c.rotation.x = -c.userData.kick * 0.4; });
+      survived += dt; if (!over && survived >= 30 && hearts > 0) { over = true; scoreBase(150, 'Survived 30 s'); floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 4, 0)), 'SURVIVED'); later(winGame, 600); return; }
       spawnT -= dt; if (spawnT <= 0) { throwBall(); spawnT = Math.max(0.55, 1.25 - caught * 0.1) + Math.random() * 0.4; }
       for (let k = balls.length - 1; k >= 0; k--) {
         const b = balls[k]; b.v.y -= dt * (b.back ? 6 : 2.2); b.m.position.addScaledVector(b.v, dt);
         if (b.m.position.y < 1.2 && !b.back) { b.m.position.y = 1.2; b.v.y = Math.abs(b.v.y) * 0.6; if (Math.abs(b.v.y) > 0.6) play('bounce', 0.3); }
         b.m.rotation.x += dt * 8;
+        if (!b.gold && !b.out && !b.near && inv <= 0) { const dd = b.m.position.distanceTo(me.position.clone().add(new THREE.Vector3(0, 0.6, 0))); if (dd < 1.0 && dd >= 0.55) { b.near = true; scoreMult(1, 'Near miss'); chime(7, 0.08, 'sine'); } }
         if (!b.gold && !b.out && inv <= 0 && b.m.position.distanceTo(me.position.clone().add(new THREE.Vector3(0, 0.6, 0))) < 0.55) {
           b.out = true; chain = 0; inv = 1.2; trauma = Math.min(1, trauma + 0.45); play('bounce', 0.6);
           if (!relaxed) { hearts--; floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2, 0)), hearts > 0 ? `HIT! ${hearts} left` : 'OUT!'); if (hearts <= 0) { over = true; later(failGame, 900); } }
           else floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2, 0)), 'Shake it off');
         }
-        if (b.m.position.z > NEAR + 2 || b.m.position.z < FAR - 3 || Math.abs(b.m.position.x) > 7) { if (!b.gold && !b.out && !b.back) { score += 10; } gameRoot.remove(b.m); balls.splice(k, 1); }
+        if (b.m.position.z > NEAR + 2 || b.m.position.z < FAR - 3 || Math.abs(b.m.position.x) > 7) { if (!b.gold && !b.out && !b.back) scoreBase(8, 'Dodge'); gameRoot.remove(b.m); balls.splice(k, 1); }
       }
-      hud.bText.textContent = `${coarse ? 'Stick to move, tap to catch' : 'W A S D to move, Space or tap to catch'} · Catches ${caught}/${goal} · Score ${score}${chain > 1 ? ` · chain x${Math.min(5, chain)}` : ''} · ${relaxed ? 'relaxed' : '♥'.repeat(Math.max(0, hearts))} · best ${best}`;
+      hud.bText.textContent = `${coarse ? 'Stick to move, tap to catch' : 'W A S D to move, Space or tap to catch'} · Catches ${caught}/${goal} or survive ${Math.min(30, Math.floor(survived))}/30 s · Round ${sub()}${chain > 1 ? ` · chain x${chain}` : ''} · ${relaxed ? 'relaxed' : '♥'.repeat(Math.max(0, hearts))}${best ? ` · best ${best}` : ''}`;
     },
     tap() { tryCatch(); }, tapAnywhere: tryCatch
   };
@@ -638,7 +653,7 @@ function buildKeepsakes() {
 }
 function placeKeepsakes(t) {
   KEEP.forEach((k) => {
-    if (!k.g) return;
+    if (!k.g || k.custom) return;
     if (k.at === 'sky' && k.pos) k.g.position.set(k.pos[0] + Math.sin(t * 0.3) * 2, k.pos[1] + Math.sin(t * 0.7) * 0.6, k.pos[2]);
     else if (k.between) { const a = anchor(islands[k.between[0]]), b = anchor(islands[k.between[1]]); k.g.position.copy(a).lerp(b, 0.5).add(new THREE.Vector3(0, 7 + Math.sin(t * 0.8) * 0.5, 0));  k.g.lookAt(b.x, k.g.position.y, b.z); k.g.rotateY(Math.PI / 2); }
     else { const isl = islands[k.at]; const o = new THREE.Vector3(...k.off); o.applyQuaternion(isl.g.quaternion); k.g.position.copy(anchor(isl)).add(o); }
@@ -654,7 +669,7 @@ function findKeepsake(id) {
   const txt = typeof k.text === 'function' ? k.text() : k.text;
   $('#keepTitle').textContent = k.title; $('#keepText').textContent = txt; $('#keepNo').textContent = `Keepsake ${KEEP.indexOf(k) + 1} of ${KEEP.length}`;
   $('#keep').hidden = false; $('#keep').classList.remove('pop'); void $('#keep').offsetWidth; $('#keep').classList.add('pop');
-  if (first) { burst(k.g.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 70, 7, 7); chime(10, 0.16); setTimeout(() => chime(12, 0.14), 120); joyCount += 5; save(); }
+  if (first) { voice('keepsake_found'); journeyEvent(`Keepsake found: ${k.title}`); burst(k.g.position.clone().add(new THREE.Vector3(0, 1.5, 0)), 70, 7, 7); chime(10, 0.16); setTimeout(() => chime(12, 0.14), 120); joyCount += 5; save(); }
   if (k.id === 'gate') k.g.children.forEach((c) => { if (c.userData.portal) c.material.opacity = 0.75; });
 }
 $('#keepClose').onclick = () => ($('#keep').hidden = true);
@@ -677,34 +692,54 @@ let runId = 0, relaxed = false;
 function later(fn, ms) { const id = runId; setTimeout(() => { if (id === runId) fn(); }, ms); }
 let landGrade = 'auto';
 function beginGame(i) {
-  const isl = islands[i]; player.mode = 'game'; player.at = i; runId++;
+  const isl = islands[i]; player.mode = 'game'; player.at = i; runId++; refreshCorridor();
   gameRoot.position.copy(anchor(isl)); gameRoot.clear(); gameRoot.quaternion.identity(); gameRoot.scale.setScalar(1);
   const v = VERB[isl.kind] || ['PLAY!', ''];
   verbCard(v[0], v[1]); hint('', '');
   later(() => {
     if (player.mode !== 'game' || player.at !== i) return;
-    game = (GAMES[isl.kind] || GAMES.pier)(isl); game.isl = isl; game.elapsed = 0; game.limit = LIMIT[isl.kind] || 25;
-    hud.timer.hidden = relaxed;
+    jResult = null; game = (GAMES[isl.kind] || GAMES.pier)(isl); game.isl = isl; game.scope = isl.kind === 'table' && tableLive ? tableLive.runKey : `${isl.kind}-${runId}-${Date.now().toString(36)}`; game.elapsed = 0; game.limit = LIMIT[isl.kind] || 25;
+    hud.timer.hidden = relaxed || !!game.untimed;
   }, 900);
   hud.prompt.hidden = true;
 }
 function failGame() {
+  if (game && game.cancel) try { game.cancel(); } catch (e) {}
+  if (game && game.dispose) try { game.dispose(); } catch (e) {}
   const i = game.isl.i; hideBanner(); gameRoot.clear(); game = null; runId++;
   verbCard('TIME!', 'one more go'); play('whoosh', 0.5);
   const rid = runId; setTimeout(() => { if (rid === runId && player.mode === 'game') beginGame(i); }, 1400);
 }
-function winGame() {
+/* one idempotent completion for live and resumed wins (Astra 1c P1): facts are frozen when earned, re-running only sets booleans and maxes */
+function completionFacts(isl, score) { const c = corridors[isl.i]; return { i: isl.i, kind: isl.kind, score: Math.max(0, score | 0), star1: landGrade === 'bull' || landGrade === 'great', star2: !!(c && c.total && c.got / c.total >= 0.8) }; }
+/* the exact total winGame's tally will show: raw causes, plus the clear bonus and bullseye Mult for non-raw toys */
+function finalScore(g) { const sc = g.sc || newScore(); let b = sc.base, m = sc.mult; if (!g.rawTally) { b += 100; if (landGrade === 'bull') m += 1; } return b * m; }
+/* commit an earned completion now, before any timer or tally can be interrupted (Home build, creations) */
+function commitCompletion(isl) { if (!game || game.won || game.depthFacts) return; game.priorBest = +BEST[isl.kind] || 0; const f = completionFacts(isl, finalScore(game)); game.depthFacts = f; game.freshComplete = completeIsland(f, false).fresh; }
+function celebrateStamp(i) { stampEls[i].classList.add('fresh'); setTimeout(() => stampEls[i].classList.remove('fresh'), 900); seatPassengers(); setTimeout(() => floatText(player.pos.clone().add(new THREE.Vector3(0, 3.6, 0)), `${PASSENGERS[i]} aboard`), 700); }
+function completeIsland(f, celebrate = true) {
+  const p = progress[f.i]; if (!p) return { fresh: false, ok: false };
+  const fresh = !p.done; p.done = true; p.stars[0] = true; if (f.star1) p.stars[1] = true; if (f.star2) p.stars[2] = true;
+  let ok = true; if (f.score > (+BEST[f.kind] || 0)) BEST[f.kind] = f.score;
+  if (f.score > 0) ok = store('islandhop-best', JSON.stringify(BEST)) && ok;
+  ok = save() && ok; paintStamps();
+  if (fresh && celebrate) celebrateStamp(f.i);
+  return { fresh, ok };
+}
+async function winGame() {
   if (!game || game.won) return; game.won = true;
-  const isl = game.isl, p = progress[isl.i]; const at = gameRoot.position.clone().add(new THREE.Vector3(0, 3, 0));
-  burst(at, 160, 11, 10); play('win', 0.7); setTimeout(() => play('stamp', 0.8), 450); setTimeout(() => play(VO[isl.i] || 'vo7', 1), 1300);
+  { const sc = game.sc || newScore(); if (!game.rawTally) { sc.base += 100; sc.steps.push({ kind: 'base', n: 100, tag: 'Island cleared' }); } if (landGrade === 'bull' && !game.rawTally) { sc.mult += 1; sc.steps.unshift({ kind: 'mult', n: 1, tag: 'Bullseye landing' }); } const rid = runId; hideBanner(); gameRoot.visible = true; const depth = !!game.depthToy, complete = depth ? (game.isl.kind === 'campus' ? 'Performance complete' : 'Route complete') : null;
+    const res = await runTally(sc, depth ? 0 : relaxed ? 0 : (TARGET[game.isl.kind] || 200), chapters[game.isl.i].dataset.label, game.isl.kind, complete, game.priorBest); if (rid !== runId || !game) return; game.lastScore = res.total;
+    if (depth) { jResult = { scope: game.scope, value: res.total, label: game.isl.kind === 'campus' ? 'Performance points' : 'Route points', target: null, explanation: complete, retained: 'Your stamp, stars, best and this creation are saved.' }; journeyEvent(`${complete}: ${label(game.isl.i)}`, game.scope, res.total); }
+    else if (!game.rawTally) { const tg = relaxed ? 0 : (TARGET[game.isl.kind] || 200); jResult = { scope: game.scope, value: res.total, label: `${label(game.isl.i)} result`, target: tg || null, explanation: res.ok ? 'Target reached' : `${(tg - res.total).toLocaleString()} short of the target this time`, retained: 'Island points are this round. Your stamp, stars and best are saved.' }; journeyEvent(progress[game.isl.i].done ? `${label(game.isl.i)} cleared again` : `Stamp earned: ${label(game.isl.i)}`, game.scope, res.total); } if (game.draft) { await offerDraft(); if (rid !== runId || !game) return; } }
+  const isl = game.isl, facts = game.depthFacts || completionFacts(isl, game.lastScore || 0), deferredFresh = !!game.freshComplete; const at = gameRoot.position.clone().add(new THREE.Vector3(0, 3, 0));
+  burst(at, 160, 11, 10); play('win', 0.7); setTimeout(() => play('stamp', 0.8), 450); if (storyVoice) setTimeout(() => voice('story' + isl.i), 1300);
   freeze = 0.09; trauma = Math.min(1, trauma + 0.6);
+  if (game.depthToy && game.result) saveDepth(isl.kind, game.result);
+  if (game.dispose) try { game.dispose(); } catch (e) {}
   hideBanner(); gameRoot.clear(); game = null; runId++;
   const val = chapters[isl.i].dataset.value; if (val) setTimeout(() => verbCard(val, chapters[isl.i].dataset.label), 250);
-  const fresh = !p.done; p.done = true; p.stars[0] = true;
-  if (landGrade === 'bull' || landGrade === 'great') p.stars[1] = true;
-  const c = corridors[isl.i]; if (c && c.total && c.got / c.total >= 0.8) p.stars[2] = true;
-  save(); paintStamps();
-  if (fresh) { stampEls[isl.i].classList.add('fresh'); setTimeout(() => stampEls[isl.i].classList.remove('fresh'), 900); seatPassengers(); setTimeout(() => floatText(player.pos.clone().add(new THREE.Vector3(0, 3.6, 0)), `${PASSENGERS[isl.i]} aboard`), 700); }
+  if (completeIsland(facts).fresh || deferredFresh) { if (deferredFresh) celebrateStamp(isl.i); }
   setTimeout(() => { if (player.mode === 'card' && player.at === isl.i) openCard(isl.i); }, 1000);
   player.mode = 'card';
 }
@@ -750,7 +785,7 @@ function buildCorridor(i) {
 let activeC = -1;
 function refreshCorridor() {
   const next = progress.findIndex((p) => !p.done);
-  corridors.forEach((c, k) => (c.g.visible = circuitOn || (k === next && !longWalk.on)));
+  corridors.forEach((c, k) => (c.g.visible = circuitOn || (k === next && !longWalk.on && player.mode !== 'game')));
   activeC = longWalk.on ? -1 : next;
 }
 
@@ -790,10 +825,10 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => { keys.clear(); burnHeld = false; stick.id = null; stick.dx = stick.dy = 0; });
-function leaveGame() { if (!game && player.mode !== 'game') return; hideBanner(); gameRoot.clear(); game = null; runId++; verbCard('LATER!', 'the island will wait'); takeOff(); }
+function leaveGame() { voiceCancel(); tableLive = null; if (game && game.cancel) try { game.cancel(); } catch (e) {} if (game && game.dispose) try { game.dispose(); } catch (e) {} setTimeout(() => resumePending(), 700); if (!game && player.mode !== 'game') return; hideBanner(); gameRoot.clear(); game = null; runId++; verbCard('LATER!', 'the island will wait'); takeOff(); }
 $('#leave').onclick = leaveGame;
 function autopilot(i, landNow) { if (player.mode === 'game') return; if (player.mode === 'card') closeCard(); player.target = { island: i, land: !!landNow }; player.mode = 'fly'; player.auto = true; play('whoosh', 0.4); }
-function takeOff() { player.mode = 'fly'; player.target = null; player.auto = false; player.vel.y = 5; player.at = -1; }
+function takeOff() { player.leftIsl = player.at; player.leftUntil = clock.elapsedTime + 4; player.mode = 'fly'; player.target = null; player.auto = false; player.vel.y = 5; player.at = -1; refreshCorridor(); } /* the island you just left will not catch you again for a moment */
 let near = -1;
 $('#land').onclick = () => { if (near >= 0) autopilot(near, true); };
 
@@ -823,7 +858,7 @@ function endPointer(e) {
 }
 canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); dist = Math.min(40, Math.max(10, dist * (1 + e.deltaY * 0.001))); }, { passive: false });
-function overlayOpen() { return !started || !$('#start').hidden || !$('#circuitEnd').hidden || $('#seenText').classList.contains('open') || document.documentElement.classList.contains('reading'); }
+function overlayOpen() { return !started || !$('#start').hidden || !$('#circuitEnd').hidden || $('#seenText').classList.contains('open') || document.documentElement.classList.contains('reading') || !$('#tally').hidden || !$('#draft').hidden; }
 function click(e) {
   if (overlayOpen()) return;
   const r = canvas.getBoundingClientRect();
@@ -831,7 +866,7 @@ function click(e) {
   ray.setFromCamera(ndc, camera);
   if (game) {
     const h = ray.intersectObjects(gameRoot.children, true).find((x) => x.object.visible);
-    if (h) { let o = h.object; while (o.parent && o.parent !== gameRoot) o = o.parent; game.tap(o); }
+    if (h) { if (game.rawHit) game.tap(h.object); else { let o = h.object; while (o.parent && o.parent !== gameRoot) o = o.parent; game.tap(o); } }
     else if (game.tapAnywhere) game.tapAnywhere();
     return;
   }
@@ -839,7 +874,7 @@ function click(e) {
   if (kh) { findKeepsake(kh.object.userData.keep); return; }
   if (player.mode === 'card') return;
   const hits = ray.intersectObjects(islands.map((x) => x.g), true);
-  if (hits.length) { const i = hits[0].object.userData.island; if (i !== undefined) autopilot(i, i === near); }
+  if (hits.length) { const i = hits[0].object.userData.island; if (i !== undefined) autopilot(i, i === near || !islands[i].done); }
 }
 
 /* ---------- theme ---------- */
@@ -856,16 +891,30 @@ function applyTheme() {
 applyTheme();
 document.addEventListener('themechange', applyTheme);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
-$('#sound').addEventListener('click', () => { muted.fx = !muted.fx; burner(false); if (muted.fx) { liveSounds.forEach((c) => c.pause()); liveSounds.clear(); } });
+const audioPref = { sound: true, music: true, fx: true };
+try { const a = JSON.parse(localStorage.getItem('islandhop-audio') || 'null'); if (a) { audioPref.sound = a.sound !== false; audioPref.music = a.music !== false; audioPref.fx = a.fx !== false; } } catch (e) {}
+function applyAudio(persist) {
+  musicOn = audioPref.sound && audioPref.music; muted.fx = !(audioPref.sound && audioPref.fx);
+  if (!musicOn && typeof MUS === 'object') Object.keys(MUS).forEach((k) => { if (MUS[k]) { MUS[k].volume = 0; musVol[k] = 0; } }); /* silence now; resume fades in */
+  if (muted.fx) { burner(false); liveSounds.forEach((c) => c.pause()); liveSounds.clear(); }
+  if (!audioPref.sound) voiceCancel(); /* master off silences an active cue now */
+  if (musicOn && started) startMusic();
+  const set = (id, on, a, b) => { const el = $(id); if (el) { el.textContent = on ? a : b; el.setAttribute('aria-pressed', on); } };
+  set('#sound', audioPref.sound, '♪ On', '♪ Off'); set('#musicBtn', audioPref.music, 'Music on', 'Music off'); set('#fxBtn', audioPref.fx, 'Effects on', 'Effects off');
+  if (persist) try { localStorage.setItem('islandhop-audio', JSON.stringify(audioPref)); } catch (e) {}
+}
+$('#sound').addEventListener('click', () => { audioPref.sound = !audioPref.sound; applyAudio(true); });
+if ($('#musicBtn')) $('#musicBtn').onclick = () => { audioPref.music = !audioPref.music; applyAudio(true); };
+if ($('#fxBtn')) $('#fxBtn').onclick = () => { audioPref.fx = !audioPref.fx; applyAudio(true); };
 
 /* ---------- finale ---------- */
 let finaleShown = false, finaleT = 0;
 function finale() {
-  finaleShown = true; finaleT = 8; play('win', 0.8); setTimeout(() => play('vo7', 1), 900); trauma = 0.8; freeze = 0.12;
+  finaleShown = true; finaleT = 8; play('win', 0.8); trauma = 0.8; freeze = 0.12;
   const stars = progress.reduce((a, p) => a + p.stars.filter(Boolean).length, 0);
   $('#finaleStars').textContent = `${stars} of ${progress.length * 3} stars · ${joyCount} joy · ${found.size} of ${KEEP.length} keepsakes · everyone aboard`;
   $('#rookie').hidden = stars < progress.length * 3;
-  $('#finale').hidden = false; hint('', '');
+  $('#finale').hidden = false; hint('', ''); voice('finale');
   longWalk.rings.forEach((r) => scene.remove(r.m)); longWalk.rings = []; longWalk.on = false;
 }
 $('#finaleClose').onclick = () => { $('#finale').hidden = true; };
@@ -890,17 +939,19 @@ function loop() {
   if (!running) return;
   const rdt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   let dt = rdt; if (freeze > 0) { freeze -= rdt; dt = 0; }
-  const paused = overlayOpen(); if (paused) dt = 0;
+  const paused = overlayOpen(); if (paused) { dt = 0; voiceOverlayCheck(); }
+  if (circuitOn) circuitSyncPause(paused || !$('#circuitEnd').hidden); /* before collisions (Astra CIRCUIT-P2-01) */
+  tickJourney(performance.now()); playT += dt; if (game && game.setPaused) game.setPaused(paused || document.hidden);
 
   islands.forEach((isl) => {
-    isl.g.position.y = isl.base + (reduce ? 0 : Math.sin(t * 0.5 + isl.phase) * 0.35);
+    isl.g.position.y = isl.base + (reduce || circuitOn ? 0 : Math.sin(t * 0.5 + isl.phase) * 0.35); /* fixed in the circuit: same course for both players */
     const b = isl.beacon, a = anchor(isl);
     b.visible = !isl.done && !(game && game.isl === isl) && !longWalk.on && !circuitOn; b.position.set(a.x, a.y + 6.2 + Math.sin(t * 2 + isl.phase) * 0.3, a.z); b.rotation.y = t * 1.6;
     if (isl.pad) { isl.pad.position.set(a.x, a.y + 0.45, a.z); isl.pad.visible = player.mode === 'fly' && (circuitOn || !isl.done); isl.pad.rotation.y = t * 0.4; }
   });
   clouds.forEach((c) => { c.position.x += c.userData.v * rdt; if (c.position.x > 80) c.position.x = -80; if (c.userData.mat) { const d = c.position.distanceTo(camera.position); const seg = new THREE.Line3(camera.position, camLook); const cp = new THREE.Vector3(); seg.closestPointToPoint(c.position, true, cp); const off = cp.distanceTo(c.position); c.userData.mat.opacity = Math.max(0, Math.min(0.95, (d - 6) / 10, (off - 3) / 4)); c.visible = c.userData.mat.opacity > 0.02; } });
   farBalloons.forEach((b) => { b.userData.a += b.userData.v * rdt * 0.3; b.position.x = Math.cos(b.userData.a) * b.userData.r; b.position.z = Math.sin(b.userData.a) * b.userData.r; b.position.y = b.userData.y + Math.sin(t * 0.4 + b.userData.r) * 1.2; });
-  draftMat.uniforms.t.value = t; placeKeepsakes(t);
+  draftMat.uniforms.t.value = t; placeKeepsakes(t); tickMusic(rdt); tickBuilds(t, dt);
   tilt.uniforms.amount.value += ((game ? 0.5 : 1) - tilt.uniforms.amount.value) * Math.min(1, rdt * 3);
   { const cafe = KEEP.find((x) => x.id === 'cafe'); if (cafe && cafe.g && player.mode === 'fly' && player.pos.distanceTo(cafe.g.position) < 2.4 && !(cafe.lastT > t - 3)) { cafe.lastT = t; findKeepsake('cafe'); } }
 
@@ -941,14 +992,14 @@ function loop() {
   player.vel.x *= Math.exp(-1.6 * dt); player.vel.z *= Math.exp(-1.6 * dt); player.vel.y *= Math.exp(-1.3 * dt);
   prevPos.copy(player.pos);
   player.pos.addScaledVector(player.vel, dt);
-  player.pos.y = Math.min(30, Math.max(-12, player.pos.y));
+  player.pos.y = Math.min(ceilingAt(), Math.max(-12, player.pos.y));
   const R2 = Math.hypot(player.pos.x, player.pos.z); if (R2 > 60) { player.pos.x *= 60 / R2; player.pos.z *= 60 / R2; }
 
   /* islands are soft: bump off the sides, land from above */
   if (flying) islands.forEach((isl) => {
     const a = anchor(isl), dx = player.pos.x - a.x, dz = player.pos.z - a.z, hd = Math.hypot(dx, dz);
     if (hd < 5.4 && player.pos.y < a.y + 0.3 && player.pos.y > a.y - 7) { const k = (5.4 - hd) / 5.4; player.pos.x += (dx / (hd || 1)) * k * 0.6; player.pos.z += (dz / (hd || 1)) * k * 0.6; player.vel.y += 2; trauma = Math.min(1, trauma + 0.02); }
-    if ((circuitOn || !isl.done) && !player.auto && hd < 3.4 && player.pos.y < a.y + 2.4 && player.pos.y > a.y + 0.2 && player.vel.y < 1.5) landOn(isl.i, hd < 0.9 ? 'bull' : hd < 1.8 ? 'great' : 'ok');
+    if ((circuitOn || !isl.done) && !player.auto && !(isl.i === player.leftIsl && clock.elapsedTime < player.leftUntil) && hd < 3.4 && player.pos.y < a.y + 2.4 && player.pos.y > a.y + 0.2 && player.vel.y < 1.5) landOn(isl.i, hd < 0.9 ? 'bull' : hd < 1.8 ? 'great' : 'ok');
   });
 
   /* rings, stars, combos */
@@ -958,7 +1009,7 @@ function loop() {
       if (r.done) return;
       const s0 = tv.copy(prevPos).sub(r.p).dot(r.n), s1 = player.pos.clone().sub(r.p).dot(r.n);
       if (s0 < 0 && s1 >= 0 && player.pos.distanceTo(r.p) < 2.1) {
-        r.done = true; if (circuitOn) circuitScore('ring', 'route-' + c.i + '-ring-' + c.rings.indexOf(r), r.p); else c.got++; comboN = t - comboT < 5 ? comboN + 1 : 1; comboT = t;
+        if (circuitOn && !circuitScore('ring', 'route-' + c.i + '-ring-' + c.rings.indexOf(r), r.p)) return; r.done = true; if (!circuitOn) c.got++; comboN = t - comboT < 5 ? comboN + 1 : 1; comboT = t;
         if (!circuitOn) joyCount += comboN; chime(2 + comboN, 0.16); burst(r.p, 30, 6, 4); trauma = Math.min(1, trauma + 0.3);
         if (!circuitOn) floatText(r.p.clone().add(new THREE.Vector3(0, 2.4, 0)), comboN > 1 ? `RING x${comboN}` : 'RING!'); if (comboN >= 3) freeze = 0.06;
         hud.combo.textContent = comboN > 1 ? `x${comboN}` : ''; hud.combo.classList.remove('pop'); void hud.combo.offsetWidth; hud.combo.classList.add('pop');
@@ -967,7 +1018,7 @@ function loop() {
     c.stars.forEach((s) => {
       if (s.done) return; const d = s.m.position.distanceTo(player.pos);
       if (d < 3) s.m.position.lerp(player.pos, Math.min(1, dt * 9));
-      if (d < 1.1) { s.done = true; s.m.visible = false; if (circuitOn) circuitScore('star', 'route-' + c.i + '-star-' + c.stars.indexOf(s), s.m.position); else { c.got++; joyCount++; tut.stars++; } starStep = t - starT < 1.4 ? starStep + 1 : 0; starT = t; chime(starStep % 9, 0.09, 'sine'); }
+      if (d < 1.1) { if (circuitOn && !circuitScore('star', 'route-' + c.i + '-star-' + c.stars.indexOf(s), s.m.position)) return; s.done = true; s.m.visible = false; if (circuitOn) {} else { c.got++; joyCount++; tut.stars++; } starStep = t - starT < 1.4 ? starStep + 1 : 0; starT = t; chime(starStep % 9, 0.09, 'sine'); }
       s.m.rotation.y = t * 3;
     });
   });
@@ -1015,7 +1066,7 @@ function loop() {
   hud.heat.classList.toggle('low', player.heat < 0.6);
   hud.joy.textContent = joyCount;
   if (t - comboT > 5 && hud.combo.textContent) hud.combo.textContent = '';
-  if (game && game.elapsed !== undefined) { game.elapsed += dt; const left = relaxed ? 1 : 1 - game.elapsed / game.limit; hud.timer.style.setProperty('--left', Math.max(0, left)); if (left <= 0) failGame(); }
+  if (game && game.elapsed !== undefined && !game.untimed) { game.elapsed += dt; const left = relaxed ? 1 : 1 - game.elapsed / game.limit; hud.timer.style.setProperty('--left', Math.max(0, left)); if (left <= 0) failGame(); }
 
   if (game && dt > 0) game.tick(t, dt);
   stepParticles(dt);
@@ -1060,14 +1111,14 @@ function loop() {
 function landOn(i, grade) {
   if (player.mode !== 'fly') return;
   if (circuitOn) { circuitLanding(i); return; }
-  landGrade = grade; player.vel.set(0, 0, 0); player.at = i; burner(false);
+  landGrade = grade; player.vel.set(0, 0, 0); player.at = i; burner(false); if (grade === 'bull') voice('land_bull');
   const a = anchor(islands[i]);
   if (grade !== 'auto') { const word = { bull: 'BULLSEYE!', great: 'GREAT LANDING', ok: 'LANDED' }[grade]; floatText(a.clone().add(new THREE.Vector3(0, 3, 0)), word); if (grade === 'bull') { burst(a.clone().add(new THREE.Vector3(0, 1, 0)), 60, 7, 6); chime(8, 0.16); freeze = 0.07; } trauma = Math.min(1, trauma + 0.25); }
   if (islands[i].done) { player.mode = 'card'; openCard(i); } else beginGame(i);
 }
 ready.then(() => {
   islands.forEach((isl) => { corridors.push(buildCorridor(isl.i)); buildPad(isl); });
-  paintStamps(); refreshCorridor(); buildKeepsakes(); seatPassengers();
+  paintStamps(); refreshCorridor(); buildKeepsakes(); seatPassengers(); applyBuilds(); paintSlot();
   player.pos.copy(SPAWN); camPos.copy(SPAWN).add(new THREE.Vector3(0, 8, 22));
   const a0 = anchor(islands[0]); yaw = Math.atan2(-(a0.x - SPAWN.x), -(a0.z - SPAWN.z));
   document.documentElement.classList.add('loaded');
@@ -1095,26 +1146,33 @@ function resetCourse() {
 function circuitTurn() {
   resetCourse(); refreshCorridor();
   player.pos.copy(SPAWN); player.vel.set(0, 0, 0); player.heat = 3; player.mode = 'fly'; player.target = null; player.auto = false; player.at = -1;
+  keys.clear(); burnHeld = false; drag = null; pitch = 0.36; dist = 19; lastDrag = -10; camPos.set(0, 20, 30); camLook.set(0, 0, 0); /* same input and camera baseline for every turn */
+  player.leftIsl = -1; player.leftUntil = 0; burner(false); if (stick) { stick.id = null; stick.dx = 0; stick.dy = 0; if (stick.el) stick.el.hidden = true; }
   const a0 = anchor(islands[0]); yaw = Math.atan2(-(a0.x - SPAWN.x), -(a0.z - SPAWN.z));
   cToken = JC.beginTurn(circuit);
   $('#circuitHud').hidden = false; hint('', '');
   verbCard('JOY CIRCUIT', circuit.players === 2 ? `player ${circuit.turn} of 2 · 90 seconds` : '90 seconds · chain it all');
 }
 function circuitScore(kind, id, at) {
-  if (!circuitOn) return;
-  const r = JC.collectCircuit(circuit, id, kind, cToken); if (!r) return;
+  if (!circuitOn || !circuit || circuit.status !== 'playing') return false;
+  const r = JC.collectCircuit(circuit, id, kind, cToken); if (!r) return false;
   floatText(at.clone().add(new THREE.Vector3(0, 2.2, 0)), `+${r.points}${r.combo > 1 ? ` x${r.combo}` : ''}`);
   chime(Math.min(10, 2 + r.combo), 0.14); if (r.combo >= 4) freeze = 0.05;
+  return true;
 }
 function circuitLanding(i) {
   const isl = islands[i]; if (isl.cLanded) return; isl.cLanded = true;
   const a = anchor(isl); circuitScore('landing', `pad-${i}`, a); burst(a.clone().add(new THREE.Vector3(0, 1, 0)), 40, 7, 6);
   player.vel.y = 9; trauma = Math.min(1, trauma + 0.25);
 }
-function circuitTick(dt, paused) {
+function circuitSyncPause(paused) {
   if (!circuitOn || !circuit) return;
   if (paused && circuit.status === 'playing') { JC.pauseCircuit(circuit, cToken); cWasPaused = true; }
   else if (!paused && cWasPaused) { JC.resumeCircuit(circuit, cToken); cWasPaused = false; }
+}
+function circuitTick(dt, paused) {
+  if (!circuitOn || !circuit) return;
+  circuitSyncPause(paused);
   const done = paused ? null : JC.tickCircuit(circuit, dt, cToken);
   const s = JC.circuitSummary(circuit);
   $('#cTime').textContent = s.secondsLeft; $('#cScore').textContent = s.score.toLocaleString(); $('#cCombo').textContent = s.combo > 1 ? `x${s.combo}` : ''; $('#cPlayer').textContent = circuit.players === 2 ? `P${circuit.turn}` : 'SOLO';
@@ -1134,10 +1192,11 @@ function circuitTurnOver() {
   } else {
     const w = s.winners;
     $('#cEndTitle').textContent = circuit.players === 2 ? (w.length > 1 ? `A tie at ${top.toLocaleString()}!` : `Player ${w[0]} wins`) : `${top.toLocaleString()} points`;
-    $('#cEndText').textContent = circuit.players === 2 ? s.results.map((r) => `P${r.player}: ${r.score.toLocaleString()} (best chain x${r.maxCombo})`).join(' · ') + ` · Two-player best ${Math.max(best, top).toLocaleString()}` : `Best chain x${s.results[0].maxCombo} · ${s.results[0].targets} targets · Solo best ${Math.max(best, top).toLocaleString()}`;
+    $('#cEndText').textContent = circuit.players === 2 ? s.results.map((r) => `P${r.player}: ${r.score.toLocaleString()} (best chain x${r.maxCombo})`).join(' · ') + ` · Best single turn in 2-player mode ${Math.max(best, top).toLocaleString()}` : `Best chain x${s.results[0].maxCombo} · ${s.results[0].targets} targets · Solo best ${Math.max(best, top).toLocaleString()}`;
     $('#cEndGo').textContent = 'Run it back'; $('#cEndGo').onclick = () => circuitStart(circuit.players);
   }
   play('win', 0.6); burst(player.pos.clone().add(new THREE.Vector3(0, 3, 0)), 90, 9, 8);
+  if (s.status === 'complete') voice(best > 0 && top > best ? 'new_best' : 'circuit_end');
 }
 function circuitExit() {
   if (circuit) JC.cancelCircuit(circuit); circuitOn = false; circuit = null; cToken = null;
@@ -1150,3 +1209,533 @@ $('#circuit2').onclick = () => { $('#start').hidden = true; if (!started) $('#go
 $('#cExit').onclick = circuitExit; $('#cEndExit').onclick = circuitExit;
 
 window.__hop.circuit = () => circuit; window.__hop.circuitTurnOver = () => { if (circuit && cToken) { JC.finishTurn(circuit, cToken); circuitTurnOver(); } };
+
+/* ---------- adaptive music: four ElevenLabs versions in F at 150 BPM, crossfaded by state (Balatro-style stems, no hard stops) ---------- */
+/* one motif (F A C F) in nine identities: each island has its own instrumentation; flying near an island lets its theme drift in
+   (ElevenLabs music v2.5, flow DfOiy6n5549IJTUoqjRd; loudness matched to -18 LUFS; UNLISTENED by a human as of this build) */
+let musicOn = true, musicStarted = false;
+const ISLAND_KINDS = ['pier', 'studio', 'campus', 'table', 'arena', 'court', 'desert', 'voxel'];
+const MUS = { flight: null, toy: $('#mToy'), boss: $('#mBoss'), finale: $('#mFinale') };
+const musVol = { flight: 0, toy: 0, boss: 0, finale: 0 };
+const isleTrack = (k) => { if (!MUS[k]) { const a = new Audio(`audio/islands/${k}.mp3`); a.loop = true; a.preload = 'auto'; a.volume = 0; MUS[k] = a; musVol[k] = 0; if (musicStarted) a.play().catch(() => {}); } return MUS[k]; };
+MUS.flight = isleTrack('flight'); if ($('#music')) $('#music').removeAttribute('src');
+function startMusic() {
+  if (musicStarted) return; musicStarted = true;
+  Object.values(MUS).forEach((a) => { if (!a) return; a.volume = 0; a.loop = true; a.play().catch(() => {}); });
+}
+/* returns {layer: weight}; weights sum to 1 */
+function musicMix() {
+  if (finaleShown || finaleT > 0) return { finale: 1 };
+  if (circuitOn || (game && game.boss)) return { boss: 1 };
+  if ((player.mode === 'game' || player.mode === 'card') && islands[player.at]) { const k = islands[player.at].kind; return ISLAND_KINDS.includes(k) ? { [k]: 1 } : { toy: 1 }; }
+  if (typeof near === 'number' && near >= 0 && islands[near]) return { flight: 0.55, [islands[near].kind]: 0.45 };
+  return { flight: 1 };
+}
+function musicState() { const m = musicMix(); return Object.keys(m).sort((a, b) => m[b] - m[a])[0]; }
+function tickMusic(dt) {
+  if (!musicStarted) return;
+  const mix = musicMix(), master = (musicOn && !document.hidden ? 0.34 : 0) * (vPlaying ? 0.5 : 1);
+  Object.keys(mix).forEach((k) => ISLAND_KINDS.includes(k) && isleTrack(k));
+  Object.keys(MUS).forEach((k) => {
+    if (!MUS[k]) return;
+    const target = (mix[k] || 0) * master;
+    musVol[k] += (target - musVol[k]) * Math.min(1, dt * 1.6);
+    MUS[k].volume = Math.max(0, Math.min(1, musVol[k]));
+  });
+}
+/* hidden page: silence now, synchronously (the render loop that ramps volume is stopped while hidden) */
+document.addEventListener('visibilitychange', () => {
+  Object.keys(MUS).forEach((k) => { const a = MUS[k]; if (!a) return; if (document.hidden) { a.volume = 0; musVol[k] = 0; a.pause(); } else if (musicStarted) a.play().catch(() => {}); });
+});
+$('#go').addEventListener('click', startMusic);
+
+/* ---------- the tally: Base x Mult, staged reveal (Balatro); rising pitch, fire past 2x target, speed dial ---------- */
+let tallySpeed = 1;
+try { tallySpeed = +localStorage.getItem('islandhop-speed') || 1; } catch (e) {}
+const speedBtn = $('#tallySpeed'); if (speedBtn) { speedBtn.textContent = `${tallySpeed}x`; speedBtn.onclick = () => { tallySpeed = tallySpeed >= 4 ? 1 : tallySpeed * 2; speedBtn.textContent = `${tallySpeed}x`; try { localStorage.setItem('islandhop-speed', tallySpeed); } catch (e) {} }; }
+function newScore() { return { base: 0, mult: 1, steps: [] }; }
+function scoreBase(n, tag) { if (!game) return; game.sc = game.sc || newScore(); game.sc.base += n; game.sc.steps.push({ kind: 'base', n, tag }); }
+function scoreMult(n, tag) { if (!game) return; game.sc = game.sc || newScore(); game.sc.mult += n; game.sc.steps.push({ kind: 'mult', n, tag }); }
+const TARGET = { pier: 120, studio: 145, campus: 150, table: 120, arena: 400, court: 320, desert: 200, voxel: 150 };
+/* personal bests per island: the tally says where you stand, not only pass or miss */
+let BEST = {}; try { BEST = JSON.parse(localStorage.getItem('islandhop-best') || '{}') || {}; } catch (e) {}
+function runTally(sc, target, title, bestKey, complete, priorIn) {
+  return new Promise((resolve) => {
+    const box = $('#tally'), list = $('#tallyList'), B = $('#tallyBase'), Mu = $('#tallyMult'), T = $('#tallyTotal'), tg = $('#tallyTarget');
+    const prior = Number.isFinite(priorIn) ? priorIn : bestKey ? +BEST[bestKey] || 0 : 0; /* the best before this result, even if it was already saved */
+    $('#tallyTitle').textContent = title; tg.textContent = complete ? `${complete}${prior ? ` · Your best ${prior.toLocaleString()}` : ''}` : `Target ${target.toLocaleString()}${prior ? ` · Your best ${prior.toLocaleString()}` : ''}`;
+    list.innerHTML = ''; B.textContent = '0'; Mu.textContent = '1'; T.textContent = ''; box.classList.remove('fire', 'clear', 'miss', 'best'); box.hidden = false;
+    /* group repeated tags so the reveal reads as causes, not a log */
+    const groups = []; sc.steps.forEach((s) => { const g = groups.find((x) => x.tag === s.tag && x.kind === s.kind); if (g) { g.n += s.n; g.count++; } else groups.push({ ...s, count: 1 }); });
+    let b = 0, m = 1, i = 0;
+    const step = () => {
+      if (i < groups.length) {
+        const g = groups[i++];
+        if (g.kind === 'base') b += g.n; else m += g.n;
+        const li = document.createElement('li'); li.className = g.kind;
+        li.innerHTML = `<span>${g.tag}${g.count > 1 ? ` ×${g.count}` : ''}</span><b>${g.kind === 'base' ? '+' + g.n : '+' + g.n + ' Mult'}</b>`;
+        list.appendChild(li); B.textContent = b; Mu.textContent = m;
+        (g.kind === 'base' ? B : Mu).classList.remove('bump'); void B.offsetWidth; (g.kind === 'base' ? B : Mu).classList.add('bump');
+        chime(Math.min(10, i), 0.1, g.kind === 'mult' ? 'square' : 'triangle');
+        setTimeout(step, 260 / tallySpeed);
+      } else {
+        const total = b * m; let shown = 0; const t0 = performance.now(), dur = 700 / tallySpeed;
+        play('stamp', 0.6); trauma = Math.min(1, trauma + 0.35);
+        const count = () => {
+          const k = Math.min(1, (performance.now() - t0) / dur); shown = Math.round(total * (1 - Math.pow(1 - k, 3)));
+          T.textContent = shown.toLocaleString();
+          if (k < 1) requestAnimationFrame(count);
+          else {
+            const ok = complete ? true : total >= target; box.classList.add(ok ? 'clear' : 'miss'); /* a finished creation is never a miss */ if (total >= target * 2) box.classList.add('fire');
+            if (bestKey && total > prior) { BEST[bestKey] = total; try { localStorage.setItem('islandhop-best', JSON.stringify(BEST)); } catch (e) {} if (prior > 0) { tg.textContent = `New best! ${total.toLocaleString()} beats ${prior.toLocaleString()}`; box.classList.add('best'); voice('new_best'); } }
+            if (ok) { chime(12, 0.16); setTimeout(() => chime(14, 0.14), 90); } else play('whoosh', 0.4);
+            setTimeout(() => { box.hidden = true; resolve({ total, ok }); }, 1300 / tallySpeed + 500);
+          }
+        };
+        count();
+      }
+    };
+    setTimeout(step, 200 / tallySpeed);
+  });
+}
+
+/* ---------- the linked slice: Table (Astra's tabletop.mjs) → one souvenir → a Home construction that changes a route ---------- */
+const SOUVENIRS = {
+  reserve: { name: 'Footbridge Kit', art: 'art/cards/c3.webp', text: 'Place one bridge at Home. Open the marked crossing to Palm Springs; riding it refills heat.', build: 'bridge' },
+  plank: { name: 'Launch Plank', art: 'art/cards/c7.webp', text: 'Place one launch pad at Home. Reach the upper approach, past the usual ceiling.', build: 'pad' }
+};
+let slot = null, builds = { bridge: 0, pad: false }, awarded = new Set(), pending = null, attemptSeq = 0;
+/* one saved envelope: slot, builds, granted attempt ids and the earned-but-unchosen reward travel together (Astra P1) */
+try {
+  const s = JSON.parse(localStorage.getItem('islandhop-slice') || 'null');
+  if (s && typeof s === 'object') {
+    slot = SOUVENIRS[s.slot] ? s.slot : null; builds.bridge = Math.max(0, Math.min(6, +s.bridge || 0)); builds.pad = !!s.pad; builds.padSpot = [0, 1, 2].includes(s.padSpot) ? s.padSpot : 0;
+    if (Array.isArray(s.awarded)) awarded = new Set(s.awarded.slice(-200));
+    if (s.pending && typeof s.pending.id === 'string' && !awarded.has(s.pending.id)) {
+      const f = s.pending.facts, okF = f && Number.isInteger(f.i) && f.i >= 0 && f.i < 8 && typeof f.kind === 'string';
+      pending = { id: s.pending.id, payout: +s.pending.payout || 0, kind: String(s.pending.kind || ''), facts: okF ? { i: f.i, kind: f.kind, score: Math.max(0, +f.score || 0), star1: !!f.star1, star2: !!f.star2 } : null, chosen: SOUVENIRS[s.pending.chosen] ? s.pending.chosen : null, granted: !!s.pending.granted };
+    }
+    attemptSeq = Math.max(0, +s.seq || 0);
+  }
+  const old = JSON.parse(localStorage.getItem('islandhop-awards') || '[]'); if (Array.isArray(old)) old.forEach((id) => awarded.add(id)); /* migrate the 1b key */
+} catch (e) {}
+function saveSlice() { const ok = store('islandhop-slice', JSON.stringify({ v: 2, slot, bridge: builds.bridge, pad: builds.pad, padSpot: builds.padSpot || 0, awarded: [...awarded].slice(-200), pending, seq: attemptSeq })); if (ok) try { localStorage.removeItem('islandhop-awards'); } catch (e) {} return ok; }
+/* a durable attempt id: persisted sequence plus a random nonce, never reset by a reload */
+function newAttempt() { attemptSeq++; saveSlice(); return `table-${attemptSeq}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`; }
+let tableVisits = 0;
+function paintSlot() {
+  const el = $('#slot'); if (!el) return;
+  if (slot) { el.innerHTML = `<img src="${SOUVENIRS[slot].art}" alt=""><span><b>${SOUVENIRS[slot].name}</b><small>build it at Home</small></span>`; el.hidden = false; }
+  else el.hidden = true;
+}
+
+/* GGP: press your luck, rules and randomness owned by Astra's reducer; this adapter only renders and forwards */
+function pressTable(isl) {
+  tableVisits++;
+  if (pending && !awarded.has(pending.id)) setTimeout(() => resumePending(), 400); /* offer the earlier reward before this attempt can bank */
+  const runKey = newAttempt();
+  let st = TT.createTable({ seed: 20261002, round: attemptSeq, runId: runKey });
+  tableLive = { st, runKey };
+  let held = [false, false, false], anim = [], busy = false;
+  const dice = [0, 1, 2].map((k) => { const d = inked(new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 1.1), DIE_MATS)); d.castShadow = true; d.position.set(-1.6 + k * 1.6, 1.6, 0); d.userData.tap = true; d.userData.k = k; gameRoot.add(d); return d; });
+  const ring = dice.map((d) => { const r = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.07, 8, 32), toon(0xffd23f, { emissive: 0xffb000, emissiveIntensity: 1.2 })); r.rotation.x = Math.PI / 2; r.position.set(d.position.x, 0.95, 0); r.visible = false; gameRoot.add(r); return r; });
+  const orient = (d, v, spin) => { const e = UP[v]; const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(e[0], e[1], e[2])); q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), (d.userData.k - 1) * 0.35)); if (!spin) d.quaternion.copy(q); return q; };
+  st.dice.forEach((v, k) => orient(dice[k], v));
+  showBanner('Press your luck', '', 0);
+  const pct = (n, d) => `${Math.round((n / d) * 100)}%`;
+  function render() {
+    if (tableLive) tableLive.st = st; const p = TT.bankPreview(st), html = [];
+    const line = st.threshold ? `Pressed. Beat ${st.threshold} or it pays 0. ` : '';
+    let odds = '';
+    if (p.payout > 0) {
+      html.push(`<button type="button" data-a="BANK">Bank ${p.payout}</button>`);
+      if (p.canPress && held.some((h) => !h)) {
+        const pr = TT.previewReroll(st, { type: 'PRESS', held });
+        if (pr) { const win = pr.total - (pr.outcomes[0] || 0); odds = `Next roll only: ${pct(win, pr.total)} to beat ${pr.requiredAbove}.`; html.push(`<button type="button" data-a="PRESS">Press: risk ${p.payout}</button>`); }
+      }
+    } else if (st.rerolls > 0 && held.some((h) => !h)) {
+      const pr = TT.previewReroll(st, { type: 'ROLL', held });
+      if (pr) { const win = pr.total - (pr.outcomes[0] || 0); odds = `Next roll only: ${pct(win, pr.total)} to score.`; }
+      html.push(`<button type="button" data-a="ROLL">Roll</button>`);
+      if (st.threshold) html.push(`<button type="button" data-a="BANK">Walk away</button>`);
+    } else html.push(`<button type="button" data-a="BANK">${p.payout ? 'Bank ' + p.payout : 'Walk away'}</button>`);
+    hud.bText.textContent = `${line}${p.kind === 'none' ? 'No hand yet' : p.kind[0].toUpperCase() + p.kind.slice(1)} · ${st.rerolls} reroll${st.rerolls === 1 ? '' : 's'} left · tap a die to hold it. ${odds}`;
+    hud.choices.hidden = false; hud.choices.innerHTML = html.join('');
+    ring.forEach((r, k) => (r.visible = held[k]));
+  }
+  hud.choices.onclick = (e) => {
+    const a = e.target.dataset && e.target.dataset.a; if (!a || busy) return;
+    if (a === 'BANK' && pending && !awarded.has(pending.id)) { resumePending(); return; } /* never overwrite an earned, unchosen reward */
+    const rev = st.revision, prev = st;
+    const next = TT.reduceTable(st, a === 'BANK' ? { type: 'BANK', runId: st.runId, revision: rev } : { type: a, runId: st.runId, revision: rev, held: [...held] });
+    if (next === st) return;
+    st = next; if (tableLive) tableLive.st = st;
+    if (a !== 'BANK') {
+      busy = true; play('dice', 0.8);
+      anim = dice.map((d, k) => held[k] ? null : { d, q: orient(d, st.dice[k], true), spin: new THREE.Vector3(Math.random() * 20 - 10, Math.random() * 20 - 10, Math.random() * 20 - 10), t: 0 }).filter(Boolean);
+      later(() => { busy = false; render(); }, 1250);
+      hud.choices.innerHTML = '';
+    } else if (prev.phase === 'choosing' && st.phase === 'banked') {
+      const rewardId = runKey;
+      hud.choices.hidden = true; hud.choices.onclick = null;
+      if (st.banked > 0 && !awarded.has(rewardId) && !(pending && pending.id === rewardId)) {
+        pending = { id: rewardId, payout: st.banked, kind: TT.evaluateDice(st.dice).kind, facts: completionFacts(isl, st.banked) }; saveSlice();
+        { const kn = pending.kind[0].toUpperCase() + pending.kind.slice(1); jResult = { scope: rewardId, value: st.banked, label: 'Table points', target: null, explanation: `${kn} banked`, retained: 'Table points are this result. Stamps and builds save separately.' }; journeyEvent(`${kn} banked. Choose what it becomes.`, rewardId, st.banked); }
+        tableLive = null; /* earned, not yet chosen: survives a reload */
+        scoreBase(st.banked, 'Banked ' + TT.evaluateDice(st.dice).kind); game.rawTally = true; voice('bank');
+        game.draft = true; later(winGame, 300);
+      } else { tableLive = null; journeyEvent('Walked away. The table is always open for another go.'); floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 4, 0)), 'Walked away'); later(() => failGame(), 900); }
+    }
+  };
+  render();
+  return {
+    tick(t, dt) {
+      anim.forEach((a) => { a.t += dt; const k = Math.min(1, a.t / 1.1);
+        if (k < 1) { a.d.position.y = 1.6 + Math.sin(k * Math.PI) * 2.4 * (1 - k * 0.5); a.d.rotation.x += a.spin.x * dt * (1 - k); a.d.rotation.y += a.spin.y * dt * (1 - k); a.d.rotation.z += a.spin.z * dt * (1 - k); }
+        if (k > 0.75) a.d.quaternion.slerp(a.q, Math.min(1, (k - 0.75) * 4 + dt * 6)); if (k >= 1) { a.d.position.y = 1.6; a.d.quaternion.copy(a.q); } });
+      ring.forEach((r) => (r.rotation.z = t * 2));
+    },
+    tap(o) { if (busy || !o || !o.userData || o.userData.k === undefined) return; const k = o.userData.k, h = [...held]; h[k] = !h[k]; if (h.every(Boolean)) return; held = h; play('pop', 0.4); render(); },
+    tapAnywhere: null, untimed: true, /* a decision, not a reflex test */
+    cancel() { tableLive = null; st = TT.reduceTable(st, { type: 'CANCEL', runId: st.runId, revision: st.revision }); }
+  };
+}
+GAMES.table = (isl) => pressTable(isl);
+/* an earned reward interrupted by a reload or a leave is offered again before anything else */
+function finalizePending() {
+  if (!pending) return true;
+  const r = pending.facts ? completeIsland(pending.facts) : { ok: true };
+  if (pending.chosen && !pending.granted) { slot = pending.chosen; pending.granted = true; } /* the card is handed over once; a consumed kit stays consumed */
+  if (r.ok) { awarded.add(pending.id); pending = null; }
+  saveSlice(); paintSlot(); return !pending;
+}
+function resumePending() {
+  if (!pending || !$('#draft').hidden) return;
+  if (awarded.has(pending.id)) { pending = null; saveSlice(); return; }
+  if (pending.chosen) finalizePending(); /* the card was already chosen: retry the writes, never a second card */
+  else offerDraft(true);
+}
+$('#go').addEventListener('click', () => setTimeout(resumePending, 900));
+window.__hop.slice = () => ({ slot, builds: { ...builds }, pending, seq: attemptSeq, awarded: awarded.size });
+LIMIT.table = 90;
+
+/* souvenir draft: one slot in this slice */
+function offerDraft(resumed) {
+  if (!pending || pending.chosen) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const box = $('#draft'), list = $('#draftCards');
+    list.innerHTML = Object.entries(SOUVENIRS).map(([id, s]) => `<button type="button" class="dcard" data-id="${id}"><img src="${s.art}" alt=""><b>${s.name}</b><small>${s.text}</small></button>`).join('');
+    $('#draftNote').textContent = (resumed ? `You banked ${pending.payout} last visit. ` : '') + (slot ? `Your slot holds ${SOUVENIRS[slot].name}. Picking a new card replaces it.` : 'One slot. Choose what this win becomes.');
+    box.hidden = false;
+    list.onclick = (e) => {
+      const b = e.target.closest('.dcard'); if (!b) return; const id = b.dataset.id;
+      box.hidden = true; list.onclick = null;
+      if (!pending || awarded.has(pending.id) || pending.chosen) { if (pending && awarded.has(pending.id)) pending = null; saveSlice(); return resolve(null); } /* never grant twice */
+      slot = id; pending.chosen = id; finalizePending(); /* stamp, stars and best first; the record clears only when every write lands */
+      floatText(player.pos.clone().add(new THREE.Vector3(0, 3, 0)), `${SOUVENIRS[id].name} equipped`); journeyEvent(`${SOUVENIRS[id].name} in your pack. Build it at Home.`);
+      chime(9, 0.15); save(); paintSlot(); resolve(id);
+    };
+  });
+}
+
+/* Home: place the piece (preview, undo, build); otherwise the chest */
+const SPOTS = [[2.4, 0.4, 2.2], [-2.6, 0.4, 1.4], [0.4, 0.4, -2.6]];
+function surfaceAt(isl, spot) {
+  const a = anchor(isl), off = new THREE.Vector3(...spot).applyQuaternion(isl.g.quaternion);
+  const from = a.clone().add(off).add(new THREE.Vector3(0, 14, 0)); const rc = new THREE.Raycaster(from, new THREE.Vector3(0, -1, 0));
+  const hit = rc.intersectObject(isl.g, true)[0]; const y = hit ? hit.point.y : a.y;
+  return new THREE.Vector3(a.x + off.x, y, a.z + off.z);
+}
+function homeBuild(isl) {
+  if (!slot || !SOUVENIRS[slot]) return chestGame(isl);
+  const kind = SOUVENIRS[slot].build; let spot = 0;
+  const ghost = kind === 'pad' ? (() => { const g = new THREE.Group(); const b = M(new THREE.CylinderGeometry(1, 1.2, 0.35, 20), 0xffb703); const top = M(new THREE.CylinderGeometry(0.75, 0.75, 0.1, 20), 0xff4d6d, { emissive: 0xff4d6d, emissiveIntensity: 0.6 }); top.position.y = 0.25; g.add(b, top); return g; })()
+    : (() => { const g = new THREE.Group(); for (let k = 0; k < 3; k++) { const p = M(new THREE.BoxGeometry(0.9, 0.12, 0.5), 0xc68642); p.position.set(0, 0, k * 0.6); g.add(p); } return g; })();
+  ghost.traverse((o) => { if (o.material) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.55; } });
+  gameRoot.add(ghost);
+  const place = () => { const w = surfaceAt(isl, SPOTS[spot]); ghost.position.copy(w.sub(gameRoot.position)).add(new THREE.Vector3(0, 0.15, 0)); ghost.userData.y = ghost.position.y; };
+  place();
+  showBanner(kind === 'pad' ? 'Place the launch pad' : 'Lay the bridge planks', 'Preview a spot, undo if you change your mind, then build. It stays here.', 0);
+  hud.choices.hidden = false;
+  hud.choices.innerHTML = '<button type="button" data-a="next">Try next spot</button><button type="button" data-a="undo">Undo, keep the card</button><button type="button" data-a="build">Build it</button>';
+  hud.choices.onclick = (e) => {
+    const a = e.target.dataset && e.target.dataset.a; if (!a) return;
+    if (a === 'next') { spot = (spot + 1) % SPOTS.length; place(); play('pop', 0.3); }
+    if (a === 'undo') { hud.choices.onclick = null; leaveGame(); }
+    if (a === 'build') {
+      hud.choices.onclick = null; hud.choices.hidden = true;
+      if (kind === 'pad') { builds.pad = true; builds.padSpot = spot; } else builds.bridge = 3;
+      journeyEvent(kind === 'pad' ? 'Launch pad built. Ride it up past the old ceiling.' : 'Footbridge laid. Fly the planks to Palm Springs.'); slot = null; saveSlice(); paintSlot(); applyBuilds(); scoreBase(120, kind === 'pad' ? 'Launch pad built' : 'Bridge planks laid'); commitCompletion(isl); /* Home stamp, stars and best are durable at Build */
+      burst(ghost.getWorldPosition(new THREE.Vector3()), 80, 7, 8); voice('build_done'); later(winGame, 500);
+    }
+  };
+  const arrow = M(new THREE.ConeGeometry(0.35, 0.7, 4), 0xffd23f, { emissive: 0xffb000, emissiveIntensity: 1 }); arrow.rotation.x = Math.PI; gameRoot.add(arrow);
+  return { untimed: true, tick(t) { ghost.position.y = ghost.userData.y + Math.abs(Math.sin(t * 3)) * 0.15; arrow.position.copy(ghost.position).add(new THREE.Vector3(0, 1.6 + Math.sin(t * 4) * 0.2, 0)); arrow.rotation.y = t * 2; }, tap() {}, tapAnywhere: null };
+}
+GAMES.voxel = (isl) => homeBuild(isl);
+const homeIdx = () => islands.findIndex((x) => x.kind === 'voxel');
+
+/* persistent structures and the routes they open */
+const buildRoot = new THREE.Group(); scene.add(buildRoot);
+let padDraft = null, bridgeLine = null;
+function applyBuilds() {
+  buildRoot.clear(); padDraft = null; bridgeLine = null;
+  const hi = homeIdx(); if (hi < 0) return; const home = islands[hi];
+  if (builds.pad) {
+    const g = new THREE.Group(); const b = M(new THREE.CylinderGeometry(1, 1.2, 0.35, 20), 0xffb703); const top = M(new THREE.CylinderGeometry(0.75, 0.75, 0.1, 20), 0xff4d6d, { emissive: 0xff4d6d, emissiveIntensity: 0.8 }); top.position.y = 0.25; g.add(b, top);
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 30, 24, 1, true), draftMat); col.position.y = 15; g.add(col);
+    g.userData.spot = SPOTS[builds.padSpot || 0]; buildRoot.add(g); padDraft = g;
+  }
+  if (builds.bridge > 0) {
+    const ps = islands.findIndex((x) => x.kind === 'desert'); if (ps >= 0) {
+      const g = new THREE.Group(); g.userData = { n: builds.bridge, to: ps }; buildRoot.add(g); bridgeLine = g;
+      for (let k = 0; k < 12; k++) { const p = M(new THREE.BoxGeometry(1.4, 0.14, 0.8), k < builds.bridge * 2 ? 0xc68642 : 0x9a8f86); p.castShadow = false; p.material = p.material.clone(); if (k >= builds.bridge * 2) { p.material.transparent = true; p.material.opacity = 0.25; } g.add(p); }
+    }
+  }
+}
+const VIEW_KEEP = { custom: true, id: 'view', at: 'sky', pos: null, title: 'The view from the top', text: 'From up here every island is one flight away. All roads lead home, and you built this one.', make: () => { const g = new THREE.Group(); const s = new THREE.Mesh(STAR, toon(0xffd23f, { emissive: 0xffc400, emissiveIntensity: 1.4 })); s.scale.setScalar(1.3); g.add(s); return g; } };
+KEEP.push(VIEW_KEEP);
+function tickBuilds(t, dt) {
+  buildRoot.visible = !circuitOn;
+  const hi = homeIdx(); if (hi < 0 || circuitOn) { if (VIEW_KEEP.g) VIEW_KEEP.g.visible = false; return; } const ha = anchor(islands[hi]);
+  if (padDraft) {
+    if (padDraft.userData.yOff === undefined) padDraft.userData.yOff = surfaceAt(islands[hi], padDraft.userData.spot).y - ha.y;
+    padDraft.position.copy(ha).add(new THREE.Vector3(...padDraft.userData.spot).applyQuaternion(islands[hi].g.quaternion)); padDraft.position.y = ha.y + padDraft.userData.yOff;
+    const hx = Math.hypot(player.pos.x - padDraft.position.x, player.pos.z - padDraft.position.z);
+    if (player.mode === 'fly' && hx < 1.8 && player.pos.y > ha.y - 1 && player.pos.y < ha.y + 32) { player.vel.y += dt * 26; player.heat = Math.min(3, player.heat + dt * 2); }
+  }
+  /* the high keepsake only shows once the pad exists: a route the build made reachable */
+  if (VIEW_KEEP.g && padDraft && player.mode === 'fly' && player.pos.distanceTo(VIEW_KEEP.g.position) < 2.6 && !(VIEW_KEEP.lastT > t - 3)) { VIEW_KEEP.lastT = t; findKeepsake('view'); }
+  if (VIEW_KEEP.g) { VIEW_KEEP.g.visible = !!padDraft; VIEW_KEEP.g.position.copy(ha).add(new THREE.Vector3(0, 33 + Math.sin(t) * 0.4, 0)); VIEW_KEEP.g.rotation.y = t; }
+  if (bridgeLine) {
+    const b = anchor(islands[bridgeLine.userData.to]);
+    bridgeLine.children.forEach((p, k) => { const f = (k + 0.5) / bridgeLine.children.length; p.position.copy(ha).lerp(b, f); p.position.y += 2 + Math.sin(f * Math.PI) * 3; p.lookAt(b.x, p.position.y, b.z); });
+    const solid = bridgeLine.userData.n * 2;
+    bridgeLine.children.slice(0, solid).forEach((p) => { if (player.mode === 'fly' && player.pos.distanceTo(p.position) < 1.6) { player.heat = Math.min(3, player.heat + dt * 3); player.vel.addScaledVector(new THREE.Vector3().subVectors(b, ha).setY(0).normalize(), dt * 10); } });
+  }
+}
+
+function ceilingAt() {
+  const hi = homeIdx(); if (!padDraft || hi < 0 || circuitOn) return 30;
+  return Math.hypot(player.pos.x - padDraft.position.x, player.pos.z - padDraft.position.z) < 7 ? 44 : 30;
+}
+
+window.__hop.padPos = () => padDraft ? padDraft.position.clone() : null;
+
+window.__hop.buildsVisible = () => buildRoot.visible;
+
+/* ---------- voice: Astra's LINES.json (d492efe8), sparse reactions to confirmed events, never narration ----------
+   higher priority wins events in the same beat; 10 s global spacing plus each cue's cooldown; one voice, no backlog;
+   a cue may play over the result card it belongs to (owner), any other overlay cancels it */
+let voiceOn = true, storyVoice = false, vPlaying = null, vLast = -99, vPend = null, vTimer = 0;
+try { const v = JSON.parse(localStorage.getItem('islandhop-voice') || 'null'); if (v) { voiceOn = v.on !== false; storyVoice = !!v.story; } } catch (e) {}
+const LINES = {
+  land_bull: { id: 'landing_clean', priority: 1, cooldown: 45 },
+  bank: { id: 'table_banked', priority: 2, cooldown: 20, owner: '#tally' },
+  new_best: { id: 'personal_best', priority: 3, cooldown: 40, owner: '#tally' },
+  build_done: { id: 'construction_done', priority: 4, cooldown: 30, owner: '#tally' },
+  keepsake_found: { id: 'discovery', priority: 3, cooldown: 30 },
+  circuit_end: { id: 'circuit_finished', priority: 4, cooldown: 60, owner: '#circuitEnd' },
+  finale: { id: 'all_islands', priority: 5, cooldown: 120 }
+};
+['vo0', 'vo1', 'vo2', 'vo3', 'vo4', 'vo8', 'vo5', 'vo6'].forEach((f, i) => (LINES['story' + i] = { src: `audio/${f}.mp3`, priority: 0, cooldown: 0, story: true }));
+const cueLast = {};
+function voiceCancel() { clearTimeout(vTimer); vPend = null; if (vPlaying) { try { vPlaying.pause(); } catch (e) {} vPlaying = null; } }
+/* a cue may speak over its own result card only while nothing else blocks the screen */
+function otherBlocking(owner) { return !started || ['#start', '#circuitEnd', '#tally', '#draft'].some((s) => s !== owner && $(s) && !$(s).hidden) || $('#seenText').classList.contains('open') || document.documentElement.classList.contains('reading'); }
+/* the paused loop calls this: keep a cue that is speaking over its own result card */
+function voiceOverlayCheck() { if (vPlaying && !(vPlaying.owner && $(vPlaying.owner) && !$(vPlaying.owner).hidden && !otherBlocking(vPlaying.owner))) voiceCancel(); }
+function voiceEligible(ev, now) {
+  const L = LINES[ev]; if (!L || !voiceOn || !audioPref.sound || document.hidden) return false; /* Voice is its own preference under the master Sound switch */
+  if (L.story && !storyVoice) return false;
+  if (vPlaying || now - vLast < 10 || now - (cueLast[ev] ?? -1e9) < L.cooldown) return false;
+  if (game && !game.won && game.isl && (game.isl.kind === 'arena' || game.isl.kind === 'court')) return false; /* never over timing windows */
+  return true;
+}
+function voice(ev) {
+  if (!LINES[ev]) return;
+  /* gather events from the same beat, then speak only the highest priority one */
+  if (vPend) { if (LINES[ev].priority > LINES[vPend].priority) vPend = ev; return; }
+  vPend = ev;
+  vTimer = setTimeout(() => {
+    const e = vPend; vPend = null; if (!e) return; const now = performance.now() / 1000; if (!voiceEligible(e, now)) return;
+    const L = LINES[e]; if (overlayOpen() && !(L.owner && !$(L.owner).hidden && !otherBlocking(L.owner))) return;
+    const a = new Audio(L.src || `audio/voice3/${L.id}.mp3`); a.volume = 1; a.owner = L.owner; vPlaying = a; vLast = now; cueLast[e] = now;
+    a.onended = a.onerror = () => { if (vPlaying === a) vPlaying = null; };
+    a.play().catch(() => { if (vPlaying === a) vPlaying = null; });
+  }, 120);
+}
+function paintVoice() {
+  const v = $('#voiceBtn'), s = $('#storyBtn');
+  if (v) { v.textContent = voiceOn ? 'Voice on' : 'Voice off'; v.setAttribute('aria-pressed', voiceOn); }
+  if (s) { s.textContent = storyVoice ? 'Story voice on' : 'Story voice off'; s.setAttribute('aria-pressed', storyVoice); }
+  try { localStorage.setItem('islandhop-voice', JSON.stringify({ on: voiceOn, story: storyVoice })); } catch (e) {}
+}
+if ($('#voiceBtn')) $('#voiceBtn').onclick = () => { voiceOn = !voiceOn; if (!voiceOn) voiceCancel(); paintVoice(); }; /* cancels the current and the queued cue */
+if ($('#storyBtn')) $('#storyBtn').onclick = () => { storyVoice = !storyVoice; paintVoice(); };
+paintVoice();
+document.addEventListener('visibilitychange', () => { if (document.hidden) voiceCancel(); });
+window.__hop.voiceLog = () => ({ playing: vPlaying ? vPlaying.src : null, cueLast: { ...cueLast } });
+
+/* ---------- journey: Astra's feedback presenter (feedback.mjs 4257f90f) fed a read-only snapshot of confirmed state, 4 Hz ----------
+   contract: SNAPSHOT-EXAMPLE.json f9ae16f0; score.scope must equal lastEvent.scope for a delta to show */
+VERB.table = ['ROLL!', 'bank a pair or better'];
+let jEvent = null, jResult = null, jSeq = 0, tableLive = null;
+function journeyEvent(cause, scope, delta) { jEvent = { id: `ev-${++jSeq}-${Date.now().toString(36)}`, scope: scope || null, delta: Number.isFinite(delta) ? delta : null, cause }; }
+const label = (i) => (chapters[i] ? chapters[i].dataset.label : 'the next island');
+const journeyRoot = $('#journey'), journey = journeyRoot ? mountFeedback(journeyRoot) : null;
+function journeyGoal() {
+  const done = progress.filter((p) => p.done).length, base = { done, total: progress.length, unit: 'stamps' };
+  if (circuitOn) return { title: 'Joy Circuit', next: 'Fly through rings and land on pads before the clock runs out.' };
+  if (game && game.isl) {
+    const k = game.isl.kind, name = label(game.isl.i);
+    if (game.depthToy && game.snapshot && !game.won) {
+      const pv = (game.snapshot() || {}).preview || {};
+      const prog = pv.required ? { done: pv.visited || 0, total: pv.required, unit: 'stops' } : pv.total ? { done: pv.met || 0, total: pv.total, unit: 'criteria met' } : base;
+      return { ...prog, title: `${name}: ${pv.title || 'make it yours'}`, next: pv.feedback || pv.goal || pv.hint || 'Plan it, then finish when it feels right.' };
+    }
+    if (k === 'table') return { ...base, title: `${name}: win a building card`, next: 'Bank a pair or better. Press to risk it for more.' };
+    if (k === 'voxel' && slot) return { ...base, title: `Build your ${SOUVENIRS[slot].name}`, next: 'Try a spot, then Build it. It stays and opens a new route.' };
+    const v = VERB[k] || ['PLAY!', ''];
+    return { ...base, title: `${name}: ${v[0].replace('!', '').toLowerCase()} ${v[1]}`.trim(), next: game.won ? 'Nice. Counting it up.' : 'Clear the goal to earn this island’s stamp.' };
+  }
+  if (slot) return { ...base, title: `Take your ${SOUVENIRS[slot].name} home`, next: `Fly to ${label(homeIdx())} and land to build it.` };
+  if (near >= 0) return { ...base, title: `Land on ${label(near)}`, next: islands[near].done ? 'Land to reread it, then Play again for stars you missed.' : 'Press Land and play.' };
+  if (done === progress.length) return { ...base, title: 'Every island stamped', next: 'Follow the golden rings for the Long Walk Home.' };
+  const nx = progress.findIndex((p) => !p.done);
+  return { ...base, title: `Next stop: ${label(nx)}`, next: 'Burn to climb, steer toward it, then land.' };
+}
+function journeyScore() {
+  if (circuitOn) return { scope: 'circuit', value: +($('#cScore').textContent || '0').replace(/\D/g, '') || 0, label: 'Circuit points', target: null, explanation: 'Rings, pads and chains', retained: 'Circuit points reset each run. Your best run is saved.' };
+  if (game && game.isl && game.isl.kind === 'table' && tableLive) return null;
+  if (game && game.depthToy && !game.won) return null; /* planning points are a preview, not earned */ /* risk shows instead; nothing is earned yet */
+  if (game && game.isl && game.sc && !game.won) {
+    const k = game.isl.kind;
+    return { scope: game.scope, value: game.sc.base * game.sc.mult, label: `${label(game.isl.i)} points`, target: relaxed ? null : TARGET[k] || null, explanation: `${game.sc.base} × ${game.sc.mult}`, retained: 'Island points are this round. Stamps, stars and your best save.' };
+  }
+  return jResult;
+}
+function journeySnapshot() {
+  const stars = progress.reduce((a, p) => a + p.stars.filter(Boolean).length, 0);
+  const risk = tableLive && tableLive.st.phase === 'choosing' ? { bankable: TT.bankPreview(tableLive.st).payout, requiredAbove: tableLive.st.threshold || 0 } : null;
+  const upgrades = [];
+  if (builds.pad) upgrades.push({ name: 'Launch pad at Home', effect: 'Ride the updraft past the usual ceiling. Something waits at the top.', confirmed: true });
+  if (builds.bridge > 0) upgrades.push({ name: 'Footbridge to Palm Springs', effect: 'Fly along the planks to refill your burner.', confirmed: true });
+  return {
+    mode: circuitOn ? 'circuit' : 'explore', paused: started && overlayOpen(), goal: journeyGoal(), score: journeyScore(), risk,
+    equipment: slot ? { name: SOUVENIRS[slot].name, next: 'build it at Home' } : null, upgrades,
+    mastery: [{ label: 'stars', done: stars, total: progress.length * 3 }, { label: 'keepsakes', done: found.size, total: KEEP.length }],
+    lastEvent: jEvent, saveStatus: saveFails.size || (pending && pending.chosen) ? 'failed' : saveAny ? 'saved' : null
+  };
+}
+let jLast = 0;
+function tickJourney(now) {
+  if (!journey || now - jLast < 250) return; jLast = now;
+  journeyRoot.hidden = !started;
+  if (started) journey.update(journeySnapshot());
+}
+window.__hop.journey = () => journeySnapshot();
+window.__hop.music = () => Object.fromEntries(Object.entries(MUS).filter(([, a]) => a).map(([k, a]) => [k, { vol: +a.volume.toFixed(2), playing: !a.paused }]));
+
+/* ---------- island depth (Astra's phase3-adapter.js on routes.mjs and composition.mjs): SF plans a festival route,
+   Blizzard plans a studio tour, Teaching composes animation timing; the engine owns tally, completion and saves ---------- */
+let playT = 0;
+let DEPTH = {}; try { DEPTH = JSON.parse(localStorage.getItem('islandhop-depth') || '{}') || {}; } catch (e) {}
+function saveDepth(kind, rec) { if (!rec || rec.version !== 1) return; DEPTH[kind] = rec; store('islandhop-depth', JSON.stringify(DEPTH)); }
+const reducedMotion = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })(); /* seconds of active play: the loop adds dt, which is 0 while any overlay pauses */
+function depthBridge(isl) {
+  return {
+    THREE, root: gameRoot, seed: 20261002 + isl.i, runId: newAttempt(), previous: DEPTH[isl.kind] || null, reducedMotion, /* durable attempt id; previous restores your last route or timing, never credit */
+    mat: (c, o = {}) => toon(c, o),
+    text: (pos, s) => floatText(pos, s), burst: (p, n, s, z) => burst(p, n, s, z), chime: (n, v) => chime(n, v), sfx: (n, v) => play(n, v),
+    banner: (t, x, m) => showBanner(t, x || '', m || 0), meter: (k) => setMeter(k),
+    choices: (html, onClick) => { hud.choices.hidden = !html; hud.choices.innerHTML = html || ''; hud.choices.onclick = html ? onClick : null; },
+    info: (s) => { hud.bText.textContent = s; },
+    scoreBase: (n, tag) => scoreBase(n, tag), scoreMult: (n, tag) => scoreMult(n, tag),
+    win: () => {
+      if (!game || game.won || game.depthFacts) return;
+      const f = completionFacts(isl, (game.result && game.result.total) || 0);
+      game.priorBest = +BEST[isl.kind] || 0; game.depthFacts = f; game.freshComplete = completeIsland(f, false).fresh; saveDepth(isl.kind, game.result); /* durable before the tally */
+      later(winGame, 500);
+    }, fail: () => failGame(),
+    later: (fn, ms) => later(fn, ms), event: (cause) => journeyEvent(cause), voice: (e) => voice(e),
+    clock: () => playT
+  };
+}
+['pier', 'studio', 'campus'].forEach((k) => { GAMES[k] = (isl) => createIslandToy(k, depthBridge(isl)); });
+VERB.pier = ['PLAN!', 'your festival afternoon']; VERB.studio = ['EXPLORE!', 'make room for discovery']; VERB.campus = ['ANIMATE!', 'give it your timing'];
+/* a hidden page pauses the toy now, even though the render loop stops */
+document.addEventListener('visibilitychange', () => { if (game && game.setPaused) game.setPaused(document.hidden || overlayOpen()); });
+applyAudio(false); /* restore saved Sound, Music and Effects preferences once every module is defined */
+
+/* ---------- Phase 2: Bass on the music's own clock, Dodgeball risk and reward, Palm Springs rainbow chain (FEEL.md, ISLAND-REDESIGN.md) ---------- */
+
+/* the clock is the audio: beat = 60/BPM; 150 BPM half-time pulse = 0.8 s, double time = 0.4 s (Itooh: never a custom timer) */
+function musicClock() { return playT; } /* Astra P2: one continuous active-play clock; the pink ring is the beat, the music is not claimed to be in sync */
+function bassGame(isl) {
+  const target = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.12, 12, 48), toon(0x45e0ff, { emissive: 0x45e0ff, emissiveIntensity: 1.6 }));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.09, 12, 48), toon(0xff4fd8, { emissive: 0xff4fd8, emissiveIntensity: 2 }));
+  [target, ring].forEach((m) => { m.position.set(0, 4.5, 0); gameRoot.add(m); });
+  const lasers = new THREE.Group(); lasers.position.set(0, 1, 0); gameRoot.add(lasers);
+  for (let i = 0; i < 12; i++) { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 30, 6), new THREE.MeshBasicMaterial({ color: PAL[i % PAL.length], transparent: true, opacity: 0 })); b.geometry.translate(0, 15, 0); b.rotation.set(0.3 + Math.random() * 0.5, 0, (i - 5.5) * 0.16); lasers.add(b); }
+  const GOAL = 6, t0 = playT;
+  let hits = 0, chain = 0, flash = 0, lastBeat = -1, beat = 0.8;
+  const now = () => musicClock() - t0;
+  showBanner('Drop the bass', `Tap on the beat when the pink ring meets the blue. ${GOAL} drops; the last three go double time.`, GOAL);
+  const hit = () => {
+    if (hits >= GOAL) return;
+    const t = now(), idx = Math.round(t / beat); if (idx === lastBeat) return;
+    const off = Math.abs(t - idx * beat), where = ring.getWorldPosition(new THREE.Vector3());
+    if (off <= 0.08) {
+      lastBeat = idx; hits++; chain++; setMeter(hits); flash = 1; freeze = 0.05;
+      scoreBase(45, 'On the beat');
+      if (off <= 0.04) { scoreMult(1, 'Perfect drop'); floatText(where, chain > 2 ? `PERFECT x${chain}` : 'PERFECT'); chime(5 + Math.min(6, chain), 0.15); }
+      else { floatText(where, 'Good'); chime(3 + Math.min(6, chain), 0.12); }
+      scoreBase(20, 'Drop'); play('pop', 0.5); burst(where, 40 + chain * 6, 9, 6); trauma = Math.min(1, trauma + 0.2);
+      if (hits === 3) { beat = 0.4; lastBeat = Math.round(now() / beat); verbCard('DOUBLE TIME', 'stay with it'); }
+      if (hits >= GOAL) later(winGame, 500);
+    } else { chain = 0; flash = Math.max(flash, 0.25); } /* Hi-Fi Rush: the action still plays, no MISS text */
+  };
+  return {
+    tick(tt, dt) {
+      const t = now(), ph = ((t % beat) + beat) % beat / beat;
+      ring.scale.setScalar(1 + (1 - ph) * 2.2); ring.rotation.z = t; target.rotation.z = -t * 0.5;
+      target.scale.setScalar(1 + Math.max(0, 0.12 - Math.min(ph, 1 - ph)) * 1.5);
+      flash = Math.max(0, flash - dt * 1.6);
+      lasers.children.forEach((b, j) => { b.material.opacity = 0.12 + flash * 0.8 + (chain > 2 ? 0.15 : 0); b.rotation.z = (j - 5.5) * 0.16 + Math.sin(t * 3 + j) * 0.3 * (0.3 + flash); });
+      bloom.strength = baseBloom + flash * 0.9;
+    },
+    tap: hit, tapAnywhere: hit, beatInfo: () => ({ t: now(), beat, hits })
+  };
+}
+GAMES.arena = (isl) => bassGame(isl);
+LIMIT.arena = 40;
+
+/* Palm Springs: pop in rainbow order for a chain; a wrong color only breaks the chain (no fail) */
+const RAIN = [0xe8413c, 0xf39a2b, 0xf7d23e, 0x4caf50, 0x3b7fd9, 0x8a4fc6], RAIN_N = ['red', 'orange', 'yellow', 'green', 'blue', 'violet'];
+function rainbowGame(isl) {
+  const items = []; let year = 48, next = 0, chain = 0, done = false;
+  for (let k = 0; k < 12; k++) {
+    const ci = (k * 5) % 6, m = balloonMesh(0); m.children[0].material = toon(RAIN[ci], { emissive: RAIN[ci], emissiveIntensity: 0.2 }); m.children[1].material = toon(RAIN[ci]);
+    m.userData = { a: k / 12, ci, x: Math.cos(k * 2.4) * 3, z: Math.sin(k * 2.4) * 3, tap: true }; gameRoot.add(m); items.push(m);
+  }
+  showBanner('Pop your way to 56', '', 8);
+  const paint = () => { hud.bText.textContent = `Every balloon is a year (${year}). Pop them in rainbow order for a chain: next is ${RAIN_N[next]}.${chain > 1 ? ` Chain x${chain}.` : ''}`; };
+  paint();
+  return {
+    tick(t) { items.forEach((m) => { if (!m.visible) return; m.position.set(m.userData.x, 1.5 + ((t * 0.32 + m.userData.a) % 1) * 4.8, m.userData.z); m.rotation.z = Math.sin(t * 2 + m.userData.a * 6) * 0.15; }); },
+    tap(obj) {
+      if (done) return; /* the result is frozen at the eighth pop */
+      const m = items.find((x) => x === obj || x.getObjectById(obj.id)); if (!m || !m.visible) return;
+      m.visible = false; year++; setMeter(year - 48); freeze = 0.04;
+      const w = m.getWorldPosition(new THREE.Vector3()); burst(w, 26, 5, 4);
+      if (m.userData.ci === next) { chain++; next = (next + 1) % 6; scoreBase(20, 'Year'); if (chain > 1) scoreMult(1, 'Rainbow chain'); chime(Math.min(10, 2 + chain), 0.13); floatText(w, `${year}${chain > 2 ? ` · x${chain}` : ''}`); }
+      else { chain = 0; scoreBase(10, 'Year'); play('pop', 0.6); floatText(w, `${year}`); }
+      if (year === 56) { done = true; later(winGame, 400); floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 5, 0)), 'FIFTY-SIX'); }
+      paint();
+    }
+  };
+}
+GAMES.desert = (isl) => rainbowGame(isl);
+
+window.__hop.musicClock = () => musicClock(); window.__hop.screenOf = (o) => { const v = o.getWorldPosition(new THREE.Vector3()).project(camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; }; window.__hop.root = gameRoot;
