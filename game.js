@@ -20,6 +20,9 @@ const LOOK = new URLSearchParams(location.search).get('look') || 'lit';
 
 const $ = (s) => document.querySelector(s);
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* first 60 seconds (Darby 10/2): calm motion follows the OS setting by default and can be switched on the start card; stored under islandhop-calm */
+let calm = reduce; try { const c = localStorage.getItem('islandhop-calm'); if (c !== null) calm = c === '1'; } catch (e) {}
+document.documentElement.classList.toggle('calm', calm);
 const canvas = $('#world');
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); }
@@ -49,7 +52,26 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(400, 32, 16), new THREE.Shad
   vertexShader: 'varying vec3 p; void main(){ p = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
   fragmentShader: 'uniform vec3 top,mid,low; varying vec3 p; void main(){ float h = normalize(p).y; vec3 c = h>0. ? mix(mid,top,smoothstep(0.,.6,h)) : mix(mid,low,smoothstep(0.,.5,-h)); gl_FragColor = vec4(c,1.); }'
 }));
-scene.add(sky);
+scene.add(sky); sky.renderOrder = -20;
+/* first80 (Darby 10/3): Astra's Higgsfield painted sky as a camera-facing distant backdrop drawn over the gradient dome; the CC0 HDR below stays for lighting only */
+const skyArt = (() => {
+  const mat = new THREE.MeshBasicMaterial({ transparent: false, depthWrite: false, depthTest: true, fog: false, toneMapped: false });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat); m.renderOrder = -10; m.frustumCulled = false; m.visible = false; scene.add(m); /* opaque queue, drawn early, depth-tested: every nearer shape paints over it (Astra's review) */
+  const tex = {}, tl = new THREE.TextureLoader();
+  ['day', 'night'].forEach((k) => tl.load(k === 'day' ? 'art/sky-higgsfield.webp' : 'art/sky-higgsfield-night.webp', (t) => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; tex[k] = t; if (!mat.map) { mat.map = t; mat.needsUpdate = true; } }, undefined, () => {}));
+  return { m, mat, tex, want: 'day', fade: 0 };
+})();
+function skyArtTheme(night) { skyArt.want = night ? 'night' : 'day'; const t = skyArt.tex[skyArt.want]; if (t && skyArt.mat.map !== t) { skyArt.mat.map = t; skyArt.mat.needsUpdate = true; } }
+function skyArtPlace(rdt) {
+  const t = skyArt.tex[skyArt.want] || skyArt.mat.map; if (!t) return;
+  if (skyArt.mat.map !== t) { skyArt.mat.map = t; skyArt.mat.needsUpdate = true; }
+  skyArt.fade = Math.min(1, skyArt.fade + rdt * 0.8); skyArt.m.visible = true; skyArt.mat.color.setScalar(0.6 + 0.4 * skyArt.fade); /* fade through colour, not alpha */
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir); const D = 380;
+  skyArt.m.position.copy(camera.position).addScaledVector(dir, D); skyArt.m.quaternion.copy(camera.quaternion);
+  const h = 2 * D * Math.tan((camera.fov * Math.PI / 180) / 2) * 1.25, w = Math.max(h * camera.aspect * 1.25, h * 16 / 9);
+  skyArt.m.scale.set(w, Math.max(h, w * 9 / 16), 1);
+  const ph = ((yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); t.offset.x = (ph / (Math.PI * 2) - 0.5) * 0.08; /* a little parallax with the turn, inside the clamped edge */
+}
 if (LOOK === 'lit') {
   const pm = new THREE.PMREMGenerator(renderer);
   scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -315,7 +337,7 @@ function closeCard() {
   if (progress.every((p) => p.done) && !longWalk.on && !finaleShown && !circuitOn) startLongWalk();
 }
 chapters.forEach((c) => {
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'fly'; b.textContent = 'Fly on →'; b.onclick = closeCard; c.appendChild(b);
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'fly'; b.textContent = 'Fly on →'; b.onclick = () => { closeCard(); if (guided) guidedNext(); }; c.appendChild(b);
   /* replay a stamped island: chase missing stars and your best (the stamp is already yours) */
   const ag = document.createElement('button'); ag.type = 'button'; ag.className = 'fly again'; ag.textContent = 'Play again'; ag.onclick = () => { const i = player.at; hud.card.classList.remove('open'); chapters.forEach((x) => x.classList.remove('on')); if (islands[i]) beginGame(i); }; c.appendChild(ag);
 });
@@ -558,15 +580,19 @@ function courtGame(isl) {
   let survived = 0;
   const balls = []; let spawnT = 0.6, caught = 0, hearts = 3, score = 0, chain = 0, over = false, inv = 0, dash = 0;
   const goal = 5, best = +BEST.court || 0; /* one score model: the tally's Base x Mult; best is the final result in the same units */
+  const practice = !!(joyride.on && joyride.chosen === isl.i && !progress[isl.i].done); /* first80: the joyride's first visit is a labelled practice round, no outs; replay restores the full challenge */
+  const noOuts = relaxed || practice; let thrown = 0;
   const pts = () => (game && game.sc ? game.sc.base * game.sc.mult : 0), sub = () => (game && game.sc ? `${game.sc.base} \u00d7 ${game.sc.mult} = ${pts()}` : '0');
-  showBanner('Dodge red. Catch gold.', `Move with W A S D or the stick. Tap or Space to catch a gold ball and fire it back. ${goal} catches, or survive 30 seconds. Catching heals a heart.${relaxed ? ' Relaxed: no outs.' : ''} Your best: ${best}.`, goal);
+  if (practice) showBanner('Practice round: catch gold, dodge red', `No outs this first time. ${coarse ? 'Stick to move, tap' : 'W A S D to move, Space or tap'} to catch a gold ball. ${goal} catches, or stay in for 30 seconds, earns the stamp for real.`, goal);
+  else showBanner('Dodge red. Catch gold.', `Move with W A S D or the stick. Tap or Space to catch a gold ball and fire it back. ${goal} catches, or survive 30 seconds. Catching heals a heart.${relaxed ? ' Relaxed: no outs.' : ''} Your best: ${best}.`, goal);
   const ballGeo = new THREE.SphereGeometry(0.2, 16, 12);
   function throwBall() {
-    const gold = Math.random() < 0.38, from = crew[Math.floor(Math.random() * 2)];
+    const firstPractice = practice && thrown === 0; thrown++;
+    const gold = firstPractice ? true : Math.random() < 0.38, from = crew[Math.floor(Math.random() * 2)];
     const m = M(ballGeo, gold ? 0xffd23f : 0xe63946, gold ? { emissive: 0xffb000, emissiveIntensity: 0.6 } : {});
     m.position.set(from.position.x, 1.6, FAR + 0.3); gameRoot.add(m);
-    const target = new THREE.Vector3(me.position.x + (Math.random() - 0.5) * 2.2, 1.2, NEAR + 0.4);
-    const v = target.sub(m.position).normalize().multiplyScalar(4.2 + Math.min(3, caught * 0.5) + Math.random());
+    const target = new THREE.Vector3(me.position.x + (firstPractice ? 0 : (Math.random() - 0.5) * 2.2), 1.2, NEAR + 0.4); /* the practice opener is gold, straight at you, and slow */
+    const v = target.sub(m.position).normalize().multiplyScalar(firstPractice ? 3.2 : 4.2 + Math.min(3, caught * 0.5) + Math.random());
     from.userData.kick = 1; play('pop', 0.25);
     balls.push({ m, v, gold, out: false, back: false });
   }
@@ -574,7 +600,7 @@ function courtGame(isl) {
     if (over) return;
     const b = balls.find((x) => x.gold && !x.back && !x.out && x.m.position.distanceTo(me.position.clone().add(new THREE.Vector3(0, 0.7, 0))) < 1.15);
     if (b) {
-      b.back = true; b.v.set((Math.random() - 0.5) * 2, 2.5, -9); caught++; chain++; scoreBase(50, 'Catch'); if (chain > 1) scoreMult(1, 'Catch chain'); if (!relaxed && hearts < 3) { hearts++; floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2.6, 0)), 'HEAL'); } freeze = 0.05; setMeter(caught);
+      b.back = true; b.v.set((Math.random() - 0.5) * 2, 2.5, -9); caught++; chain++; scoreBase(50, 'Catch'); if (chain > 1) scoreMult(1, 'Catch chain'); if (!noOuts && hearts < 3) { hearts++; floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2.6, 0)), 'HEAL'); } freeze = 0.05; setMeter(caught);
       burst(b.m.getWorldPosition(new THREE.Vector3()), 30, 6, 5); chime(3 + chain, 0.15); play('cheer', 0.55); trauma = Math.min(1, trauma + 0.25);
       floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2, 0)), chain > 1 ? `CATCH x${chain}` : 'CATCH!');
       if (caught >= goal) { if (chain >= 3) game.niceCatch = true; over = true; floatText(gameRoot.position.clone().add(new THREE.Vector3(0, 4, 0)), `${pts()} so far`); later(winGame, 700); }
@@ -599,12 +625,12 @@ function courtGame(isl) {
         if (!b.gold && !b.out && !b.near && inv <= 0) { const dd = b.m.position.distanceTo(me.position.clone().add(new THREE.Vector3(0, 0.6, 0))); if (dd < 1.0 && dd >= 0.55) { b.near = true; scoreMult(1, 'Near miss'); chime(7, 0.08, 'sine'); } }
         if (!b.gold && !b.out && inv <= 0 && b.m.position.distanceTo(me.position.clone().add(new THREE.Vector3(0, 0.6, 0))) < 0.55) {
           b.out = true; chain = 0; inv = 1.2; trauma = Math.min(1, trauma + 0.45); play('bounce', 0.6);
-          if (!relaxed) { hearts--; floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2, 0)), hearts > 0 ? `HIT! ${hearts} left` : 'OUT!'); if (hearts <= 0) { over = true; later(failGame, 900); } }
+          if (!noOuts) { hearts--; floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2, 0)), hearts > 0 ? `HIT! ${hearts} left` : 'OUT!'); if (hearts <= 0) { over = true; later(failGame, 900); } }
           else floatText(me.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 2, 0)), 'Shake it off');
         }
         if (b.m.position.z > NEAR + 2 || b.m.position.z < FAR - 3 || Math.abs(b.m.position.x) > 7) { if (!b.gold && !b.out && !b.back) scoreBase(8, 'Dodge'); gameRoot.remove(b.m); balls.splice(k, 1); }
       }
-      hud.bText.textContent = `${coarse ? 'Stick to move, tap to catch' : 'W A S D to move, Space or tap to catch'} · Catches ${caught}/${goal} or survive ${Math.min(30, Math.floor(survived))}/30 s · Round ${sub()}${chain > 1 ? ` · chain x${chain}` : ''} · ${relaxed ? 'relaxed' : '♥'.repeat(Math.max(0, hearts))}${best ? ` · best ${best}` : ''}`;
+      hud.bText.textContent = `${coarse ? 'Stick to move, tap to catch' : 'W A S D to move, Space or tap to catch'} · Catches ${caught}/${goal} or survive ${Math.min(30, Math.floor(survived))}/30 s · Round ${sub()}${chain > 1 ? ` · chain x${chain}` : ''} · ${practice ? 'practice, no outs' : relaxed ? 'relaxed' : '♥'.repeat(Math.max(0, hearts))}${best ? ` · best ${best}` : ''}`;
     },
     tap() { tryCatch(); }, tapAnywhere: tryCatch
   };
@@ -742,6 +768,7 @@ async function winGame() {
   if (completeIsland(facts).fresh || deferredFresh) { if (deferredFresh) celebrateStamp(isl.i); }
   setTimeout(() => { if (player.mode === 'card' && player.at === isl.i) openCard(isl.i); }, 1000);
   player.mode = 'card';
+  if (joyride.on) { joyride.on = false; joyride.phase = 'done'; setTimeout(showPostcard, 2600); }
 }
 
 /* ---------- courses: a star trail, rings and an updraft between islands (Pilotwings + A Short Hike) ---------- */
@@ -816,6 +843,7 @@ const tut = { burned: false, stars: 0, draft: false };
 const keys = new Set();
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
+  if (k === ' ' && typeof joyride === 'object' && joyride.on && !(e.target && /input|textarea/i.test(e.target.tagName))) joyride.tapUntil = Math.max(joyride.tapUntil || 0, performance.now() + 220);
   if (e.target && /input|textarea|button/i.test(e.target.tagName) && k === ' ') return;
   if (k.startsWith('arrow') || k === ' ') e.preventDefault();
   keys.add(k);
@@ -858,7 +886,8 @@ function endPointer(e) {
 }
 canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); dist = Math.min(40, Math.max(10, dist * (1 + e.deltaY * 0.001))); }, { passive: false });
-function overlayOpen() { return !started || !$('#start').hidden || !$('#circuitEnd').hidden || $('#seenText').classList.contains('open') || document.documentElement.classList.contains('reading') || !$('#tally').hidden || !$('#draft').hidden; }
+let glLost = false;
+function overlayOpen() { return glLost || !started || !$('#start').hidden || !$('#route').hidden || !$('#postcard').hidden || !$('#circuitEnd').hidden || $('#seenText').classList.contains('open') || document.documentElement.classList.contains('reading') || !$('#tally').hidden || !$('#draft').hidden; }
 function click(e) {
   if (overlayOpen()) return;
   const r = canvas.getBoundingClientRect();
@@ -884,7 +913,7 @@ function applyTheme() {
   night = r === 'dark';
   if (night) { skyU.top.value.set(0x15103a); skyU.mid.value.set(0x40287a); skyU.low.value.set(0x7a3170); sun.intensity = 0.8; sun.color.set(0xa9b8ff); hemi.intensity = 0.5; hemi.color.set(0x9a8cff); baseBloom = 0.9; INK.uniforms.color.value.set(0x120c22); }
   else { skyU.top.value.set(0x1f6fe0); skyU.mid.value.set(0x5aa8ff); skyU.low.value.set(0xa8d4ff); sun.intensity = LOOK === 'lit' ? 3.4 : 2.4; sun.color.set(0xffe2b8); hemi.intensity = LOOK === 'lit' ? 0.75 : 1.1; hemi.color.set(0xdfeeff); baseBloom = 0.3; INK.uniforms.color.value.set(0x2b2140); }
-  bloom.strength = baseBloom;
+  bloom.strength = baseBloom; skyArtTheme(night);
   if (scene.fog) scene.fog.color.set(night ? 0x3a2a66 : 0x8fc2ff);
   islands.forEach((x) => (x.beacon.material.emissiveIntensity = night ? 1.6 : 0.45));
 }
@@ -893,6 +922,9 @@ document.addEventListener('themechange', applyTheme);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 const audioPref = { sound: true, music: true, fx: true };
 try { const a = JSON.parse(localStorage.getItem('islandhop-audio') || 'null'); if (a) { audioPref.sound = a.sound !== false; audioPref.music = a.music !== false; audioPref.fx = a.fx !== false; } } catch (e) {}
+/* first visit: silent until the player opts in (start card "Add sound" = the same master switch); a returning player keeps the saved choice */
+let audioStored = false; try { audioStored = localStorage.getItem('islandhop-audio') !== null; } catch (e) {}
+if (!audioStored) audioPref.sound = false;
 function applyAudio(persist) {
   musicOn = audioPref.sound && audioPref.music; muted.fx = !(audioPref.sound && audioPref.fx);
   if (!musicOn && typeof MUS === 'object') Object.keys(MUS).forEach((k) => { if (MUS[k]) { MUS[k].volume = 0; musVol[k] = 0; } }); /* silence now; resume fades in */
@@ -900,10 +932,11 @@ function applyAudio(persist) {
   if (!audioPref.sound) voiceCancel(); /* master off silences an active cue now */
   if (musicOn && started) startMusic();
   const set = (id, on, a, b) => { const el = $(id); if (el) { el.textContent = on ? a : b; el.setAttribute('aria-pressed', on); } };
-  set('#sound', audioPref.sound, '♪ On', '♪ Off'); set('#musicBtn', audioPref.music, 'Music on', 'Music off'); set('#fxBtn', audioPref.fx, 'Effects on', 'Effects off');
+  set('#sound', audioPref.sound, '♪ On', '♪ Off'); set('#soundOpt', audioPref.sound, '♪ Sound on', '♪ Add sound'); set('#musicBtn', audioPref.music, 'Music on', 'Music off'); set('#fxBtn', audioPref.fx, 'Effects on', 'Effects off');
   if (persist) try { localStorage.setItem('islandhop-audio', JSON.stringify(audioPref)); } catch (e) {}
 }
 $('#sound').addEventListener('click', () => { audioPref.sound = !audioPref.sound; applyAudio(true); });
+if ($('#soundOpt')) $('#soundOpt').onclick = () => $('#sound').click(); /* the start card's consent button is the master switch, not a second one */
 if ($('#musicBtn')) $('#musicBtn').onclick = () => { audioPref.music = !audioPref.music; applyAudio(true); };
 if ($('#fxBtn')) $('#fxBtn').onclick = () => { audioPref.fx = !audioPref.fx; applyAudio(true); };
 
@@ -937,6 +970,7 @@ function angLerp(a, b, k) { let d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI
 
 function loop() {
   if (!running) return;
+  if (glLost) { requestAnimationFrame(loop); return; } /* nothing to draw until the context returns or the page reloads */
   const rdt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   let dt = rdt; if (freeze > 0) { freeze -= rdt; dt = 0; }
   const paused = overlayOpen(); if (paused) { dt = 0; voiceOverlayCheck(); }
@@ -951,8 +985,8 @@ function loop() {
   });
   clouds.forEach((c) => { c.position.x += c.userData.v * rdt; if (c.position.x > 80) c.position.x = -80; if (c.userData.mat) { const d = c.position.distanceTo(camera.position); const seg = new THREE.Line3(camera.position, camLook); const cp = new THREE.Vector3(); seg.closestPointToPoint(c.position, true, cp); const off = cp.distanceTo(c.position); c.userData.mat.opacity = Math.max(0, Math.min(0.95, (d - 6) / 10, (off - 3) / 4)); c.visible = c.userData.mat.opacity > 0.02; } });
   farBalloons.forEach((b) => { b.userData.a += b.userData.v * rdt * 0.3; b.position.x = Math.cos(b.userData.a) * b.userData.r; b.position.z = Math.sin(b.userData.a) * b.userData.r; b.position.y = b.userData.y + Math.sin(t * 0.4 + b.userData.r) * 1.2; });
-  draftMat.uniforms.t.value = t; placeKeepsakes(t); tickMusic(rdt); tickBuilds(t, dt);
-  tilt.uniforms.amount.value += ((game ? 0.5 : 1) - tilt.uniforms.amount.value) * Math.min(1, rdt * 3);
+  draftMat.uniforms.t.value = t; placeKeepsakes(t); tickMusic(rdt); tickBuilds(t, dt); joyrideTick(t, dt, paused);
+  tilt.uniforms.amount.value += ((game ? 0.35 : joyride.on ? 0.45 : 0.6) - tilt.uniforms.amount.value) * Math.min(1, rdt * 3); /* first80: nearby play sharper than scenery */
   { const cafe = KEEP.find((x) => x.id === 'cafe'); if (cafe && cafe.g && player.mode === 'fly' && player.pos.distanceTo(cafe.g.position) < 2.4 && !(cafe.lastT > t - 3)) { cafe.lastT = t; findKeepsake('cafe'); } }
 
   /* input */
@@ -964,7 +998,8 @@ function loop() {
   if (keys.has('d') || keys.has('arrowright')) steer.add(rgt);
   if (stick.id !== null) { steer.addScaledVector(rgt, stick.dx); steer.addScaledVector(fwd, -stick.dy); }
   const flying = player.mode === 'fly' && !paused;
-  const wantBurn = flying && (keys.has(' ') || keys.has('shift') || keys.has('q') || burnHeld);
+  const tapBurn = joyride.on && (joyride.phase === 'lift' || joyride.phase === 'rings') && performance.now() < (joyride.tapUntil || 0); /* first80: a quick tap pays even between frames */
+  const wantBurn = flying && (keys.has(' ') || keys.has('shift') || keys.has('q') || burnHeld || tapBurn);
   if (steer.lengthSq() > 0.01 && flying && player.auto) { player.auto = false; player.target = null; }
 
   /* heat: burn to rise and surge, sink when you let go, updrafts refill (A Short Hike / Journey) */
@@ -979,8 +1014,9 @@ function loop() {
   }));
   if (flying && !player.auto) {
     if (steer.lengthSq() > 0.01) player.vel.addScaledVector(steer.normalize(), dt * (player.burning ? 22 : 14));
-    player.vel.y -= dt * (inDraft ? 0 : 3.2);
+    player.vel.y -= dt * (inDraft ? 0 : (joyride.on && joyride.phase !== 'travel' && joyride.phase !== 'free' ? (joyride.firstLift ? 1.7 : 0) : 3.2)); /* the joyride holds height until the first lift, then sinks gently */
   }
+  if (joyride.on && flying && joyride.firstLift && (joyride.phase === 'lift' || joyride.phase === 'rings')) { const r = joyride.rings.find((x) => !x.done); if (r) { const d = new THREE.Vector3(r.p.x - player.pos.x, 0, r.p.z - player.pos.z), L = d.length(); if (L > 0.5) player.vel.addScaledVector(d.normalize(), dt * Math.min(12, 3 + L * 1.4)); const dy = r.p.y - player.pos.y, fresh = joyride.alive - joyride.lastBurn < 1.2; if (L < 9 && fresh) player.vel.y += dy * dt * 1.6; /* the ring meets a lift that is roughly right; it never lifts a player who is not lifting */ const cap = Math.max(...joyride.rings.map((x) => x.p.y)) + 3; if (player.pos.y > cap) { player.pos.y = cap; if (player.vel.y > 0) player.vel.y *= 0.2; } } }
   if (player.target && (flying || player.mode === 'landing')) {
     const a = anchor(islands[player.target.island]); tv.set(a.x, a.y + (player.target.land ? 1.4 : 5.5), a.z);
     const d = tv.clone().sub(player.pos), L = d.length();
@@ -1051,9 +1087,10 @@ function loop() {
 
   /* coaching, first minute (teach, develop, twist) */
   if (circuitOn) circuitTick(dt, paused || !$('#circuitEnd').hidden);
-  if (flying && !longWalk.on && !finaleShown && $('#start').hidden && !circuitOn) {
+  if (flying && player.mode === 'fly' && !longWalk.on && !finaleShown && $('#start').hidden && !circuitOn) { /* live mode, not the frame-start flag: an auto-landing in this frame must not leave a burner hint over the toy */
     const B = coarse ? 'BURN' : 'SPACE';
-    if (!tut.burned) hint('burn', `Hold ${B} to fire the burner and rise.`);
+    if ((player.auto && guided) || joyride.on) { /* guided flight or the joyride: one instruction at a time, from the joyride card or the guided hint */ }
+    else if (!tut.burned) hint('burn', `Hold ${B} to fire the burner and rise.`);
     else if (tut.stars < 3 && activeC === 0) hint('stars', coarse ? 'Drag the left side to steer. Follow the stars.' : 'Steer with W A S D. Follow the star trail.');
     else if (!tut.draft && activeC === 0 && player.heat < 1.6) hint('draft', 'Low on heat? Ride the swirling updraft to refill.');
     else if (near >= 0 && !islands[near].done) hint('land', 'Sink onto the target to land. Dead center is a Bullseye.');
@@ -1091,12 +1128,12 @@ function loop() {
   const k = 1 - Math.pow(0.015, rdt);
   camPos.lerp(want, k); camLook.lerp(look, k);
   trauma = Math.max(0, trauma - rdt * 1.5);
-  const sh = reduce ? 0 : trauma * trauma * 0.7;
+  const sh = (reduce || calm) ? 0 : trauma * trauma * 0.7;
   camera.position.copy(camPos).add(new THREE.Vector3(Math.sin(t * 47) * sh, Math.sin(t * 61 + 1) * sh, Math.sin(t * 53 + 2) * sh));
-  camera.lookAt(camLook);
+  camera.lookAt(camLook); skyArtPlace(rdt);
   const fovT = reduce ? 44 : 44 + Math.min(16, Math.max(0, hs - 5) * 1.6) + (player.burning ? 3 : 0);
   if (Math.abs(camera.fov - fovT) > 0.05) { camera.fov += (fovT - camera.fov) * Math.min(1, rdt * 4); camera.updateProjectionMatrix(); }
-  hud.lines.style.opacity = reduce ? 0 : Math.max(0, Math.min(0.75, (hs - 9) / 6));
+  hud.lines.style.opacity = (reduce || calm) ? 0 : Math.max(0, Math.min(0.75, (hs - 9) / 6));
   const cardOpen = hud.card.classList.contains('open'), phone = innerWidth < 700;
   shift.gx = cardOpen && !phone ? innerWidth * 0.2 : 0; shift.gy = cardOpen && phone ? innerHeight * 0.24 : 0;
   shift.x += (shift.gx - shift.x) * k; shift.y += (shift.gy - shift.y) * k;
@@ -1122,15 +1159,132 @@ ready.then(() => {
   player.pos.copy(SPAWN); camPos.copy(SPAWN).add(new THREE.Vector3(0, 8, 22));
   const a0 = anchor(islands[0]); yaw = Math.atan2(-(a0.x - SPAWN.x), -(a0.z - SPAWN.z));
   document.documentElement.classList.add('loaded');
+  { const pr = $('#joyride') || $('#guided'); if (pr && !$('#start').hidden && document.activeElement === document.body) pr.focus({ preventScroll: true }); } /* keyboard: one Enter begins */
   if (progress.every((p) => p.done) && !finaleShown) startLongWalk();
 });
 requestAnimationFrame(loop);
 let started = false;
 $('#relaxed').addEventListener('click', () => { relaxed = true; $('#go').click(); });
+/* first 60 seconds (Darby 10/2): one guided way in. No steering: the balloon autopilots to the next unstamped island and auto-lands,
+   the toy's own retry loop carries the first success, and "Fly on" keeps guiding until every stamp is in. Flight and every other mode are unchanged. */
+let guided = false;
+function guidedNext() {
+  const i = progress.findIndex((p) => !p.done);
+  if (i < 0) { guided = false; hint('guided', 'Every stamp is yours. Fly wherever you like.'); return; }
+  autopilot(i, true); hint('guided', `Sit back: flying you to ${label(i)}. Tap or click any island to change course.`);
+}
+if ($('#guided')) $('#guided').addEventListener('click', () => { guided = true; $('#start').hidden = true; if (!started) $('#go').click(); guidedNext(); }); /* synchronous: autopilot is set before the next frame, so no flight tutorial hint flashes first */
+/* ---------- first80 (Darby 10/3, Astra's brief FIRST80-DESIGN.md): the joyride, a tutorial state, not a currency ----------
+   lift through three generous rings with the player on the boost, choose a route with a visible consequence, arrive at a working toy.
+   Nothing here awards stamps, stars, joy or keepsakes; saves and modules are untouched. */
+const joyride = { on: false, phase: 'off', rings: [], got: 0, t0: 0, alive: 0, chooseAt: null, boosts: 0, group: null, lastInput: performance.now(), chosen: null, firstLift: false, lastBurn: -9 };
+['keydown', 'pointerdown'].forEach((ev) => addEventListener(ev, () => { joyride.lastInput = performance.now(); }, true));
+const joyCard = $('#joyCard'), joyLine = $('#joyLine'), joyRingsEl = $('#joyRings'), joyBoost = $('#joyBoost');
+function joySay(line, count) { if (joyLine) joyLine.textContent = line; if (joyRingsEl) joyRingsEl.textContent = count || ''; }
+function joyrideRings() {
+  if (joyride.group) { scene.remove(joyride.group); joyride.rings.length = 0; }
+  const g = new THREE.Group(); scene.add(g); joyride.group = g;
+  const dir = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)).normalize(), side = new THREE.Vector3(-dir.z, 0, dir.x);
+  const cap = Math.max(SPAWN.y + 6, ceilingAt() - 2.5);
+  [[10, 3.5, 0], [22, 6.5, 2.5], [34, 9.5, -2.5]].forEach(([f, u, sd], k) => {
+    const p = SPAWN.clone().addScaledVector(dir, f).addScaledVector(side, sd); p.y = Math.min(cap, SPAWN.y + u);
+    const col = PAL[(k + 2) % PAL.length];
+    const m = new THREE.Mesh(ringGeo, toon(col, { emissive: col, emissiveIntensity: 1.1 })); m.scale.setScalar(2.3); m.position.copy(p); m.lookAt(p.clone().add(dir)); inked(m, 0.0016); g.add(m);
+    joyride.rings.push({ m, p, done: false, k });
+  });
+}
+function joyrideStart() {
+  joyride.on = true; joyride.phase = 'lift'; joyride.got = 0; joyride.boosts = 0; joyride.firstLift = false; joyride.chosen = null; joyride.t0 = clock.elapsedTime; joyride.alive = 0; joyride.chooseAt = null; joyride.lastBurn = -9;
+  $('#start').hidden = true; if (!started) $('#go').click(); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); /* Space must reach the burner, not a hidden button */
+  player.auto = false; player.target = null; player.mode = 'fly'; player.vel.set(0, 0, 0); player.pos.copy(SPAWN); player.heat = 3; guided = false;
+  document.documentElement.classList.add('joyride'); hint('', ''); hud.prompt.hidden = true;
+  joyrideRings(); if (joyCard) joyCard.hidden = false; if (joyBoost) joyBoost.hidden = false;
+  joySay(coarse ? 'Tap BOOST to lift.' : 'Tap BOOST to lift. Space works too.', '0 / 3 rings');
+  verbCard('LIFT!', 'a little lift, a world to explore');
+}
+function joyrideEnd(toIsland) {
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  document.documentElement.classList.remove('joyride'); if (joyCard) joyCard.hidden = true; if (joyBoost) joyBoost.hidden = true; $('#route').hidden = true;
+  if (joyride.group) { joyride.group.visible = false; }
+  if (toIsland === null || toIsland === undefined) { joyride.on = false; joyride.phase = 'free'; hint('joyfree', coarse ? 'Tap any island and I will fly you there. Left thumb steers, BURN rises.' : 'Click any island and I will fly you there. W A S D steers, Space rises.'); return; }
+  joyride.phase = 'travel'; joyride.chosen = toIsland; guided = true; autopilot(toIsland, true);
+  hint('guided', `Sit back: flying you to ${label(toIsland)}. Tap or click any island to change course.`); verbCard('OFF WE GO', label(toIsland));
+}
+function joyrideTick(t, dt, paused) {
+  if (!joyride.on || paused) return; /* dt is the unpaused step; Help, Read and the route card do not count */
+  joyride.alive += dt;
+  const still = reduce || calm;
+  if (joyride.group) joyride.rings.forEach((r, k) => { if (!r.done && !still) { r.m.scale.setScalar(2.3 + Math.sin(t * 3 + k) * 0.12); r.m.rotation.z += dt * 0.6; } });
+  if (joyride.phase === 'lift' || joyride.phase === 'rings') {
+    if (player.burning) { joyride.lastBurn = joyride.alive; if (!joyride.firstLift) { joyride.firstLift = true; joyride.phase = 'rings'; floatText(player.pos.clone().add(new THREE.Vector3(0, 3.2, 0)), 'Nice lift!'); burst(player.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), still ? 12 : 50, 6, 6); chime(6, 0.2); joySay('Keep tapping BOOST. Fly through the glowing rings.', `${joyride.got} / 3 rings`); } }
+    const r = joyride.rings.find((x) => !x.done);
+    /* a ring counts only after the player has lifted at least once; no input earns nothing */
+    if (joyride.firstLift && r && Math.hypot(r.p.x - player.pos.x, r.p.z - player.pos.z) < 4.6 && Math.abs(r.p.y - player.pos.y) < 5.5) {
+      r.done = true; joyride.got++; r.m.material.emissiveIntensity = 0.25; r.m.scale.setScalar(1.6);
+      burst(r.p, still ? 16 : 60, 8, 7); chime(4 + joyride.got * 2, 0.18); floatText(r.p.clone().add(new THREE.Vector3(0, 3, 0)), joyride.got < 3 ? `RING ${joyride.got} / 3` : 'ALL THREE!'); if (!still) trauma = Math.min(1, trauma + 0.2);
+      joySay(joyride.got < 3 ? (joyride.got === 1 ? 'One. Two more ahead, a little higher.' : 'Two. One more, then you choose where to go.') : 'That is the whole lesson. Now pick a route.', `${joyride.got} / 3 rings`);
+      if (joyride.got >= 3) joyride.chooseAt = joyride.alive + 0.7; /* paused-aware: resolved in this tick, not by a timer */
+    }
+    const idle = (performance.now() - joyride.lastInput) / 1000;
+    if (joyBoost) joyBoost.classList.toggle('pulse', idle > 6);
+    if (joyride.alive > 28 && joyride.chooseAt === null) { joySay(joyride.got ? `${joyride.got} of 3 is plenty. Pick a route.` : 'No rush. Pick a route and I will fly.', `${joyride.got} / 3 rings`); joyride.chooseAt = joyride.alive + 0.9; }
+    if (joyride.chooseAt !== null && joyride.alive >= joyride.chooseAt) joyrideChoose();
+  }
+}
+function joyrideCancel(why) {
+  if (!joyride.on && joyride.phase === 'off') return;
+  joyride.on = false; joyride.phase = 'off'; joyride.chooseAt = null; joyride.chosen = null;
+  document.documentElement.classList.remove('joyride'); if (joyCard) joyCard.hidden = true; if (joyBoost) joyBoost.hidden = true; if ($('#route')) $('#route').hidden = true;
+  if (joyride.group) joyride.group.visible = false; burnHeld = false;
+}
+['#go', '#relaxed', '#circuit1', '#circuit2'].forEach((id) => { const el = $(id); if (el) el.addEventListener('click', (e) => { if (e.isTrusted) joyrideCancel(id); }, true); }); /* capture, trusted only: the joyride's own programmatic #go click does not cancel it */
+let routeOpenedAt = 0;
+function joyrideChoose() { if (!joyride.on || !(joyride.phase === 'lift' || joyride.phase === 'rings') || overlayOpen()) return; joyride.phase = 'choose'; joyride.chooseAt = null; if (joyCard) joyCard.hidden = true; if (joyBoost) joyBoost.hidden = true; burnHeld = false; keys.clear(); $('#route').hidden = false; routeOpenedAt = performance.now(); const pnl = $('#routePanel'); if (pnl) pnl.focus({ preventScroll: true }); /* the panel takes focus; the first choice is one Tab away, so a held key cannot choose */ }
+const courtIdx = () => islands.findIndex((x) => x.kind === 'court');
+const routeGuard = (fn) => () => { if (performance.now() - routeOpenedAt < 450) return; fn(); }; /* absorbs a key still held from the rings */
+if ($('#routeCatch')) $('#routeCatch').onclick = routeGuard(() => joyrideEnd(courtIdx()));
+if ($('#routeHome')) $('#routeHome').onclick = routeGuard(() => joyrideEnd(homeIdx()));
+if ($('#routeFree')) $('#routeFree').onclick = routeGuard(() => joyrideEnd(null));
+if ($('#joySkip')) $('#joySkip').onclick = () => { joyride.chooseAt = joyride.alive; joyrideChoose(); };
+const joyTap = () => { if (joyride.on) joyride.tapUntil = Math.max(joyride.tapUntil || 0, performance.now() + 220); };
+if (joyBoost) { joyBoost.addEventListener('pointerdown', (e) => { e.preventDefault(); burnHeld = true; joyTap(); try { joyBoost.setPointerCapture(e.pointerId); } catch (x) {} }); joyBoost.addEventListener('click', joyTap); /* assistive clicks arrive without pointerdown */ ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => joyBoost.addEventListener(ev, () => (burnHeld = false))); joyBoost.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); burnHeld = true; joyTap(); } }); joyBoost.addEventListener('keyup', () => (burnHeld = false)); }
+/* idle nudges outside the joyride: eight quiet seconds in a toy pulses its first choice; eight in free flight offers the autopilot */
+setInterval(() => {
+  if (!started || overlayOpen() || document.hidden) return;
+  const idle = (performance.now() - joyride.lastInput) / 1000;
+  const first = $('#choices button'); if (first) first.classList.toggle('pulse', idle > 8 && player.mode === 'game');
+  if (idle > 8 && player.mode === 'fly' && !player.auto && !circuitOn && !longWalk.on && hintKey === '') hint('idlefly', coarse ? 'Tap any island and I will fly you there.' : 'Click any island and I will fly you there.');
+}, 1000);
+/* the fresh postcard: shown once per device after the first result of a joyride; never a stamp, never a lock */
+let postcardShown = false; try { postcardShown = localStorage.getItem('islandhop-postcard-20261003') === '1'; } catch (e) {}
+let postcardCalls = 0;
+function showPostcard(tries) { postcardCalls++; if (postcardShown || !$('#postcard')) return;
+  const quiet = !overlayOpen() && (player.mode === 'card' || player.mode === 'fly') && !circuitOn && !longWalk.on;
+  if (!quiet) { if ((tries || 0) < 20) setTimeout(() => showPostcard((tries || 0) + 1), 3000); return; } postcardShown = true; try { localStorage.setItem('islandhop-postcard-20261003', '1'); } catch (e) {} $('#postcard').hidden = false; const b = $('#postcardHome'); if (b) b.focus({ preventScroll: true }); }
+if ($('#postcardClose')) $('#postcardClose').onclick = () => ($('#postcard').hidden = true);
+if ($('#postcardHome')) $('#postcardHome').onclick = () => { $('#postcard').hidden = true; if (player.mode === 'card') closeCard(); guided = true; autopilot(homeIdx(), true); hint('guided', `Sit back: flying you to ${label(homeIdx())}.`); };
+/* start card: a first visit gets the joyride as the main action; a returning player keeps flying and can replay it */
+const returning = progress.some((p) => p.done) || found.size > 0;
+if ($('#joyride')) {
+  if (returning) { $('#joyride').textContent = '▶ Keep flying'; if ($('#guided')) $('#guided').textContent = 'Replay the joyride'; }
+  $('#joyride').addEventListener('click', () => { if (returning) { joyrideCancel('#joyride'); guided = true; $('#start').hidden = true; if (!started) $('#go').click(); guidedNext(); } else joyrideStart(); });
+  if ($('#guided')) { const g2 = $('#guided').cloneNode(true); $('#guided').replaceWith(g2); g2.addEventListener('click', () => { if (returning) joyrideStart(); else { joyrideCancel('#guided'); guided = true; $('#start').hidden = true; if (!started) $('#go').click(); guidedNext(); } }); }
+}
+if ($('#calmBtn')) {
+  const paintCalm = () => { $('#calmBtn').textContent = calm ? 'Calm motion on' : 'Calm motion off'; $('#calmBtn').setAttribute('aria-pressed', calm); document.documentElement.classList.toggle('calm', calm); };
+  paintCalm(); $('#calmBtn').onclick = () => { calm = !calm; try { localStorage.setItem('islandhop-calm', calm ? '1' : '0'); } catch (e) {} paintCalm(); };
+}
 $('#go').addEventListener('click', () => {
   if (!started) { started = true; player.pos.copy(SPAWN); player.vel.set(0, 0, 0); player.heat = 3; } const sd = specialDay(); if (sd) setTimeout(() => { verbCard(sd[0], sd[1]); burst(player.pos.clone().add(new THREE.Vector3(0, 4, 0)), 120, 10, 10); }, 600); });
 window.__hop = { islands, progress, corridors, player, landOn, autopilot, beginGame, winGame, get game() { return game; }, startLongWalk, refreshCorridor };
 
+window.__hop.joyride = joyride; window.__hop.skyArt = skyArt;
+/* first80 (Astra QA): a lost graphics context must never leave an invisible game running */
+canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); glLost = true; burner(false); if ($('#gl')) $('#gl').hidden = false; const b = $('#glReload'); if (b) b.focus({ preventScroll: true }); });
+canvas.addEventListener('webglcontextrestored', () => { glLost = false; if ($('#gl')) $('#gl').hidden = true; try { renderer.resetState(); } catch (x) {} });
+if ($('#glReload')) $('#glReload').onclick = () => location.reload();
+if ($('#glRead')) $('#glRead').onclick = () => { if ($('#gl')) $('#gl').hidden = true; $('#read').click(); };
+window.__hop.glLost = () => glLost; window.__hop.postcard = () => ({ calls: postcardCalls, shown: postcardShown, hidden: $('#postcard') ? $('#postcard').hidden : null });
 /* ---------- Joy Circuit (Astra's module): a 90-second score attack over the real course, solo or pass-the-device ---------- */
 let circuit = null, circuitOn = false, cToken = null, cSnap = null, cWasPaused = false;
 function circuitStart(players) {
@@ -1600,6 +1754,7 @@ function journeyGoal() {
     return { ...base, title: `${name}: ${v[0].replace('!', '').toLowerCase()} ${v[1]}`.trim(), next: game.won ? 'Nice. Counting it up.' : 'Clear the goal to earn this island’s stamp.' };
   }
   if (slot) return { ...base, title: `Take your ${SOUVENIRS[slot].name} home`, next: `Fly to ${label(homeIdx())} and land to build it.` };
+  if (player.target && islands[player.target.island] && player.auto) return { ...base, title: `Flying to ${label(player.target.island)}`, next: 'Sit back, or tap another island to change course.' };
   if (near >= 0) return { ...base, title: `Land on ${label(near)}`, next: islands[near].done ? 'Land to reread it, then Play again for stars you missed.' : 'Press Land and play.' };
   if (done === progress.length) return { ...base, title: 'Every island stamped', next: 'Follow the golden rings for the Long Walk Home.' };
   const nx = progress.findIndex((p) => !p.done);

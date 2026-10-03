@@ -1,0 +1,224 @@
+/* Astra · Island Hop visual direction · 3 October 2026.
+   Presentation only. Integrate after shell styles. Existing game controls and IDs stay intact. */
+:root {
+  --ih-night:#102e3d;
+  --ih-ink:#153b43;
+  --ih-muted:#49636a;
+  --ih-white:#f7fbfb;
+  --ih-gold:#ffcf75;
+  --ih-aqua:#a9e2db;
+  --ih-ease:cubic-bezier(.2,.75,.25,1);
+}
+.hud:has(#start:not([hidden])) > :not(#start),
+.hud:has(#route:not([hidden])) > :not(#route) {visibility:hidden;}
+
+/* The world fills the frame. The welcome occupies a deliberate left-hand column. */
+#start.overlay {
+  padding:clamp(24px,5vw,76px);
+  justify-content:flex-start;
+  align-items:center;
+  background:linear-gradient(90deg,#102e3df5 0%,#102e3dcf 30%,#102e3d35 62%,#102e3d0a 100%);
+  overflow-y:auto;
+}
+#start .trailer {opacity:1;filter:saturate(.9) brightness(.93);}
+#start::before {content:"";position:absolute;inset:0;background:inherit;z-index:0;pointer-events:none;}
+:root #start .panel {
+  position:relative;z-index:1;
+  max-width:470px;
+  text-align:left;
+  padding:32px 0;
+  background:transparent;
+  border:0;
+  border-radius:0;
+  color:var(--ih-white);
+  box-shadow:none;
+  animation:ih-arrive .6s var(--ih-ease) both;
+}
+#start .panel>p {margin-left:0;margin-right:0;}
+#start .panel h2 {
+  color:var(--ih-white);
+  -webkit-text-stroke:0;
+  font:800 clamp(66px,7.8vw,112px)/.87 "Bricolage Grotesque",Figtree,sans-serif;
+  letter-spacing:-.045em;
+  margin:0 0 20px;
+  text-shadow:0 3px 30px #06192340;
+}
+#start .panel h2 em {color:var(--ih-gold);font-style:normal;}
+#start .panel .forfriends {
+  color:var(--ih-aqua);
+  font:700 clamp(18px,2vw,23px)/1.25 Figtree,system-ui,sans-serif;
+  letter-spacing:-.02em;
+  text-transform:none;
+  margin:0 0 16px;
+}
+#start .panel>p:not(.forfriends):not(.return):not(.credit):not(.loading) {
+  color:#e2ecee;
+  font-size:17px;
+  font-weight:500;
+  line-height:1.6;
+  max-width:36ch;
+}
+#start .row {justify-content:flex-start;gap:8px;}
+#start .row.primary {margin:26px 0 12px;}
+#start #joyride {
+  width:100%;max-width:350px;min-height:62px;
+  color:var(--ih-night);background:var(--ih-gold);
+  border:1px solid #ffdea5;border-radius:18px;
+  font:800 21px/1.2 "Bricolage Grotesque",Figtree,sans-serif;
+  box-shadow:0 4px 0 #8c591e,0 8px 28px #0003;
+}
+#start .panel .btn:not(#joyride) {
+  min-height:44px;padding:10px 13px;
+  color:var(--ih-white);background:#ffffff0d;
+  border:1px solid #c9e0e44d;border-radius:12px;
+  box-shadow:none;font-size:14px;
+}
+#start #guided {width:auto;max-width:none;font-size:14px;}
+#start .panel .btn[aria-pressed="true"] {background:#a9e2db24;border-color:var(--ih-aqua);}
+#start .more {text-align:left;max-width:400px;margin-top:17px;}
+#start .more summary {justify-content:flex-start;color:#c4d9df;font-size:13px;gap:9px;}
+#start .more summary::before {color:var(--ih-gold);}
+#start .more .keys,#start .more p {color:#d9e7ea;font-size:13px;line-height:1.55;}
+#start .more .keys {padding:14px 0;margin-top:8px;}
+#start .more .row {margin-top:10px;}
+#start .panel .credit {display:none;}
+#start .panel .return {margin-top:12px;font:600 12px/1.5 Figtree,system-ui,sans-serif;letter-spacing:0;text-transform:none;}
+#start .panel .return a {display:inline-flex;align-items:center;min-height:44px;color:#c3d8df;text-decoration:none;}
+#start .panel .return a:hover {color:white;text-decoration:underline;text-underline-offset:4px;}
+#start .panel .loading {color:var(--ih-aqua);font-size:12px;}
+#start :is(button,summary,a):focus-visible {outline:3px solid var(--ih-gold);outline-offset:4px;}
+
+/* A quiet flight instrument, with a single large tactile action. */
+.joyride .hud .logo,.joyride .gauges,.joyride .passport {display:none!important;}
+.joyride .hud .tools {opacity:.85;}
+#joyCard {
+  top:76px;width:min(340px,calc(100vw - 32px));
+  padding:12px 18px 8px;border-radius:18px;
+  background:#102e3df2;color:var(--ih-white);
+  border:1px solid #d8eeee42;box-shadow:0 8px 30px #09232c30;
+}
+#joyCard #joyRings {color:var(--ih-gold);font:700 12px/1.4 Figtree,sans-serif;letter-spacing:.08em;margin-bottom:5px;}
+#joyCard #joyLine {font-size:18px;line-height:1.3;color:var(--ih-white);}
+#joyCard #joySkip {color:#c6d9e0;min-height:44px;margin-top:2px;}
+#joyBoost {
+  width:104px;height:104px;
+  background:radial-gradient(circle at 35% 22%,#ffe4a8,#ffc260 70%);
+  color:#482c15;border:2px solid #fff3d3;
+  box-shadow:0 5px 0 #995b29,0 12px 35px #14374650,inset 0 2px 0 #fff9;
+}
+#joyBoost small {color:#624119;}
+
+/* During a motor toy, its own goal takes the lead. The progress panel keeps
+   the actual score, target and expandable details, without repeating that goal. */
+.hud:has(#banner:not([hidden]) #choices[hidden]) .journey .pf-goal,
+.hud:has(#banner:not([hidden]) #choices[hidden]) .journey .pf-next,
+.hud:has(#banner:not([hidden]) #choices[hidden]) .journey .pf-count {display:none!important;}
+.hud:has(#banner:not([hidden]) #choices[hidden]) .journey .pf-score {border-top:0;margin-top:0;padding-top:0;}
+.hud:has(#banner:not([hidden])) .logo {display:none;}
+.hud .banner {border-top:1px solid #fffdf5;}
+
+/* Choose a place, with the same actual island artwork that appears in its story. */
+#route.overlay {background:#082638a3;backdrop-filter:blur(6px);padding:24px;}
+:root #route .routepanel {
+  width:min(700px,100%);max-width:700px;padding:28px;
+  color:var(--ih-white);background:#102e3df2;border:1px solid #bce0e340;
+  box-shadow:0 28px 100px #03152055;border-radius:28px;text-align:left;
+}
+#route .routepanel h2 {
+  color:var(--ih-white);-webkit-text-stroke:0;font-size:48px;
+  line-height:1;letter-spacing:-.04em;margin:0 0 9px;
+}
+#route .routepanel h2 em {color:var(--ih-gold);}
+#route .routepanel>p {color:#cee1e5;font-size:15px;}
+#route .routes {margin-top:22px;gap:14px;}
+#route .rcard {
+  position:relative;overflow:hidden;padding:0 18px 18px;gap:8px;
+  color:var(--ih-ink);background:#f4f9f8;border:2px solid transparent;border-radius:20px;
+  box-shadow:0 7px 20px #021a2829;
+  transition:transform .18s var(--ih-ease),border-color .18s;
+}
+#route .rcard::before {
+  content:"";display:block;height:130px;margin:0 -18px 9px;
+  background-position:center;background-size:cover;background-color:#c7e1df;
+}
+#routeCatch::before {background-image:url('art/cards/c5.webp');}
+#routeHome::before {background-image:url('art/cards/c7.webp');}
+#route .rcard b {font-size:25px;letter-spacing:-.035em;}
+#route .rcard span {font-size:14px;line-height:1.45;color:var(--ih-muted);}
+#route .rcard em {font:800 13px/1.4 Figtree,sans-serif;color:#175d60;margin-top:5px;letter-spacing:0;}
+#route .rcard:hover {transform:translateY(-4px);border-color:var(--ih-gold);}
+#route .rcard:focus-visible {outline:3px solid var(--ih-gold);outline-offset:4px;}
+#route #routeFree {min-height:44px;background:transparent;border:1px solid #c6dfe454;box-shadow:none;color:#dcebef;font-size:13px;margin-top:15px;}
+
+/* Reading is an editorial companion, with the story easy to scan at full size. */
+:root .ch .mono {color:#8e3d24;letter-spacing:.07em;line-height:1.5;font-size:11px;}
+:root .ch h2 {letter-spacing:-.035em;line-height:1.1;}
+:root .ch .lead {line-height:1.6;font-size:17px;}
+:root .ch li {line-height:1.55;font-size:15px;}
+.reading .book {max-width:820px;gap:28px;padding-bottom:32px;}
+.reading .ch {padding:clamp(22px,4vw,38px);border-radius:24px;border:0;}
+.reading .mast {max-width:820px;padding-top:96px;}
+.reading .mast h1 {font-size:clamp(38px,6vw,64px);line-height:1.05;letter-spacing:-.045em;}
+.reading .mast p {font-size:18px;line-height:1.5;max-width:48ch;}
+#postcard {max-height:calc(100dvh - 32px);overflow-y:auto;padding:22px;border-radius:24px;border:1px solid #fff9;box-shadow:0 24px 100px #102e3d55;}
+#postcard img {aspect-ratio:720/394;object-fit:cover;}
+#postcard h3 {font-size:26px;letter-spacing:-.03em;}
+#postcard>p:not(.mono) {font-size:15px;line-height:1.5;}
+#postcard .row .btn {font-size:14px;min-height:44px;}
+
+@keyframes ih-arrive {from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media(max-width:700px) {
+  #start.overlay {padding:24px;align-items:flex-end;background:linear-gradient(0deg,#102e3dfa 0%,#102e3ded 42%,#102e3d66 73%,#102e3d08 100%);}
+  :root #start .panel {padding:16px 0 0;max-width:440px;margin:auto auto 0;}
+  #start .panel h2 {font-size:clamp(62px,18vw,88px);margin-bottom:15px;}
+  #start .panel .forfriends {font-size:19px;margin-bottom:11px;}
+  #start .panel>p:not(.forfriends):not(.return):not(.credit):not(.loading) {font-size:15px;line-height:1.5;max-width:36ch;}
+  #start .row.primary {margin-top:20px;}
+  #start #joyride {max-width:none;min-height:56px;font-size:20px;}
+  #start .row .btn:not(#joyride) {flex:0 1 auto;font-size:13px;padding:9px 11px;}
+  #start .more {margin-top:7px;}
+  #start .panel .return {margin-top:0;}
+  #start:has(.more[open]) {align-items:flex-start;}
+  #start:has(.more[open]) .panel {margin-top:0;}
+  #joyCard {top:64px;}
+  #joyBoost {width:94px;height:94px;right:20px;bottom:30px;}
+  .hud:has(#banner:not([hidden]) #choices[hidden]) .journey {width:220px!important;padding:8px 12px!important;border-radius:17px;}
+  #route.overlay {padding:16px;overflow-y:auto;}
+  :root #route .routepanel {padding:22px 18px;max-height:calc(100dvh - 32px);overflow-y:auto;}
+  #route .routepanel h2 {font-size:38px;}
+  #route .routes {grid-template-columns:1fr;gap:12px;margin-top:16px;}
+  #route .rcard {padding:15px 14px 15px 112px;min-height:147px;gap:6px;}
+  #route .rcard::before {position:absolute;left:0;top:0;bottom:0;width:96px;height:100%;margin:0;background-position:center;}
+  #route .rcard b {font-size:22px;}
+  #route .rcard span {font-size:13px;}
+  #route #routeFree {margin-top:8px;}
+  .reading .mast {padding-top:82px;}
+}
+@media(max-height:550px) and (min-width:701px) {
+  #start.overlay {align-items:flex-start;padding:24px 36px;}
+  :root #start .panel {padding:0;max-width:470px;}
+  #start .panel h2 {font-size:62px;margin-bottom:12px;}
+  #start .panel .forfriends {font-size:18px;margin-bottom:8px;}
+  #start .panel>p:not(.forfriends):not(.return):not(.credit):not(.loading) {font-size:14px;line-height:1.4;}
+  #start .row.primary {margin-top:14px;}
+  #start #joyride {min-height:48px;font-size:18px;}
+  #start .more {margin-top:4px;}
+  #joyCard {left:22px;translate:none;top:58px;width:275px;}
+  #joyBoost {bottom:24px;right:24px;width:90px;height:90px;}
+  #route.overlay {align-items:flex-start;overflow-y:auto;}
+  #route .routepanel h2 {font-size:32px;}
+  #route .rcard::before {height:90px;}
+}
+@media(prefers-reduced-motion:reduce) {#start .panel,#route .rcard{animation:none;transition:none;transform:none;}}
+.calm #start .panel,.calm #route .rcard {animation:none;transition:none;transform:none;}
+/* Keep the completed chapter out of keyboard navigation while a modal covers it. */
+.has3d:has(#start:not([hidden])) #book,
+.has3d:has(#route:not([hidden])) #book,
+.has3d:has(#postcard:not([hidden])) #book {visibility:hidden;}
+.hud:has(#postcard:not([hidden])) > :not(#postcard) {visibility:hidden;}
+/* A graphics recovery dialog takes precedence over any open menu. */
+.hud:has(#gl:not([hidden])) > :not(#gl),
+.has3d:has(#gl:not([hidden])) #book {visibility:hidden;}
+#gl:not([hidden]) {visibility:visible!important;z-index:100;}
+#gl .panel,#gl .panel p {background:#fff8e9;color:#173c39!important;}
+@media(min-width:701px) {.hud .banner h3 {padding-right:78px;}}

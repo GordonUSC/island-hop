@@ -1,11 +1,18 @@
 <!doctype html>
-<!-- STYLE: Lit toy diorama with a Balatro-style score layer (Style Atlas 9 miniature, soft PBR, warm sun; CRT-scanline tally card with fire) | WHY: the world stays the cover, and the new decisions need a legible, juicy readout | ALT: a full-screen card-table UI for the toys, if he wants it to read more like Balatro itself -->
+<!-- STYLE: Spacious miniature travel-world (Astra visual-polish.css over the lit toy diorama): asymmetric welcome over the live trailer, expressive Bricolage display, a compact dark flight instrument, a warm tactile BOOST, artwork-backed route choices, editorial reading cards; Higgsfield painted sky as the in-play backdrop. | WHY: the first 80 seconds must show the world and ask for one action, so the chrome steps back and the scene carries the welcome. | ALT: the cream card-table shell from first60, which reads well but covers the world. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="robots" content="noindex, nofollow, noarchive, noimageindex">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Island Hop</title>
+<title>Island Hop · Gordon’s world</title>
+<meta property="og:type" content="website">
+<meta property="og:title" content="Island Hop · Gordon’s world">
+<meta property="og:description" content="A little lift. A world to explore. Take a balloon joyride through eight islands, play a little, or settle into the stories.">
+<meta property="og:url" content="https://gordonusc.github.io/island-hop/">
+<meta property="og:image" content="https://gordonusc.github.io/island-hop/art/share-cover.jpg">
+<meta property="og:image:alt" content="A rainbow balloon surrounded by eight miniature islands in a bright blue sky">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="description" content="Gordon's fall 2026 as a lit toy-diorama game: fly a balloon to eight islands, play a toy on each, collect eight stamps, or race Joy Circuit solo or with a friend.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -55,6 +62,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 .who span{background:var(--chip);border:2px solid var(--ink);border-radius:99px;padding:2px 10px;font-size:13px}
 .count{font-family:"Bricolage Grotesque";font-weight:800;color:var(--pop)}
 .ch .fly{display:none}
+.ch figure.plate{margin:12px 0 14px}.ch figure.plate img{width:100%;height:auto;display:block;border-radius:14px;border:var(--edge)}.ch figcaption{font-size:14px;color:var(--soft);margin-top:6px}
+.ch details.morehome{margin:10px 0 4px}.ch details.morehome summary{cursor:pointer;font-weight:700;min-height:32px;list-style:none}.ch details.morehome summary::before{content:"▸ ";color:var(--pop)}.ch details.morehome[open] summary::before{content:"▾ "}.ch details.morehome ul{margin-top:8px}.ch ul.dated{margin-top:8px}
+.ch .ours{margin-top:14px;padding-top:12px;border-top:2px dashed color-mix(in oklab,var(--ink) 30%,transparent);font-weight:500}
 .foot{max-width:760px;margin:0 auto;padding:0 16px 40px;font-size:14px;color:var(--ink)}
 
 /* ---------- game layout ---------- */
@@ -332,8 +342,63 @@ button{font:inherit;color:inherit;cursor:pointer}
 }
 }
 @media (max-width:480px){.tools{gap:4px;right:8px;top:10px}.tools .btn{padding:6px 8px;font-size:12px;white-space:nowrap;min-height:36px}.hud .logo{display:none}.gauges{top:56px}}
+
+/* first 60 seconds (Darby 10/2): one primary way in, controls behind a disclosure, consent for sound, calm motion. Presentation only. */
+#start .panel p{max-width:38ch}
+.forfriends{margin-top:8px;color:var(--pop)}
+#start .row.primary{margin-top:16px}
+#guided{min-height:60px;font-size:20px;padding:14px 26px;width:100%;max-width:380px}
+#start .row .btn{min-height:48px}
+.more{margin-top:14px;text-align:center}
+.more summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:800;color:inherit;border-radius:12px}
+.more summary::-webkit-details-marker{display:none}
+.more summary::before{content:"▸";color:var(--pop)}
+.more[open] summary::before{content:"▾"}
+.more summary:focus-visible,#start .btn:focus-visible{outline:3px solid var(--sun);outline-offset:3px}
+.calm *{animation:none!important;transition:none!important}
+.calm .trailer,.calm .speedlines{display:none}
+@media (prefers-reduced-motion:reduce){.trailer{display:none}}
+@media (max-width:700px){#start .row{gap:8px}#start .row .btn{flex:1 1 40%;white-space:nowrap;padding-left:10px;padding-right:10px;font-size:15px}#joyride{flex-basis:100%;max-width:none;white-space:normal}}
+/* first80 (Darby 10/3): joyride card, boost control, route choice, postcard; the journey panel and prompt step aside during the joyride so one instruction shows */
+.joyride .journey,.joyride .prompt,.joyride .burn,.joyride .hint{display:none!important}
+.joycard{position:fixed;left:50%;translate:-50% 0;top:72px;z-index:9;width:min(420px,calc(100vw - 24px));background:var(--play-paper);color:var(--play-ink);border:1px solid #fffdf5;border-radius:22px;box-shadow:var(--play-shadow);padding:14px 18px 12px;text-align:center}
+.joycard[hidden]{display:none}.joycard .mono{color:var(--play-coral);margin:0 0 4px}.joycard p{margin:0;font:700 18px/1.3 "Bricolage Grotesque",Figtree,sans-serif}.joycard p#joyLine{font-size:19px}
+.joycard .skip{margin-top:8px;border:0;background:transparent;color:var(--play-muted);font:700 12px Figtree;text-decoration:underline;text-underline-offset:3px;cursor:pointer;min-height:32px}
+.joyboost{position:fixed;right:18px;bottom:110px;z-index:9;width:112px;height:112px;border-radius:50%;border:3px solid #fff7d3;background:#ff7b2e;color:#fff;font:800 20px/1 "Bricolage Grotesque";box-shadow:0 6px 0 #a8431a,0 10px 24px #173c3933;touch-action:none;user-select:none;-webkit-user-select:none;display:grid;place-content:center;gap:2px}
+.joyboost small{font:700 11px Figtree;letter-spacing:.08em;text-transform:uppercase;opacity:.9}
+.joyboost[hidden]{display:none}.joyboost:active{transform:translateY(4px);box-shadow:0 2px 0 #a8431a}.joyboost.pulse{animation:boostpulse 1.1s ease-in-out infinite}
+@keyframes boostpulse{50%{transform:scale(1.08);box-shadow:0 6px 0 #a8431a,0 0 0 12px #ff7b2e33}}
+.choices button.pulse{animation:boostpulse 1.1s ease-in-out infinite}
+.routepanel{max-width:640px}.routes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.rcard{display:grid;gap:8px;text-align:left;padding:16px;border:1px solid var(--play-line);border-radius:20px;background:#fffdf6;color:var(--play-ink);box-shadow:0 5px 0 #ad986944;cursor:pointer;min-height:44px}
+.rcard b{font:800 22px/1.1 "Bricolage Grotesque",Figtree,sans-serif}.rcard span{font:500 15px/1.4 Figtree;color:var(--play-muted)}.rcard em{font:800 13px Figtree;font-style:normal;color:var(--play-lagoon);letter-spacing:.04em}
+.rcard:hover,.rcard:focus-visible{border-color:var(--play-lagoon);transform:translateY(-3px)}
+.postcard{width:min(440px,calc(100vw - 24px));bottom:auto;top:50%;translate:-50% -50%;z-index:31;text-align:left}
+.postcard img{width:100%;height:auto;display:block;border-radius:14px;margin:8px 0 10px}.postcard h3{font-size:22px;line-height:1.15}.postcard .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.postcard .row .btn{min-height:44px;text-decoration:none;display:inline-flex;align-items:center}
+@media (max-width:700px){.routes{grid-template-columns:1fr}.joyboost{width:96px;height:96px;bottom:96px;right:12px}.joycard{top:64px}}
+@media (prefers-reduced-motion:reduce){.joyboost.pulse,.choices button.pulse{animation:none;outline:3px solid #ffd16f;outline-offset:4px}}
+.calm .joyboost.pulse,.calm .choices button.pulse{animation:none;outline:3px solid #ffd16f;outline-offset:4px}
 .return{margin-top:10px}.return a{color:inherit;text-decoration-thickness:2px;text-underline-offset:3px}
+
+/* first80 (Darby 10/3), Astra P0: legibility in the inherited dark theme. Cream cards always carry dark ink; the reading mast and foot carry light text on the dark body. Specificity beats the earlier theme rules. */
+:root[data-theme="dark"] .ch,:root[data-theme="dark"] .has3d .ch,:root[data-theme="dark"] .ch .lead,:root[data-theme="dark"] .ch li,:root[data-theme="dark"] .ch a,:root[data-theme="dark"] .ch h2,:root[data-theme="dark"] .ch .ours,:root[data-theme="dark"] .ch figcaption{color:var(--play-ink)}
+:root[data-theme="dark"] .ch{background:var(--play-paper)}
+:root[data-theme="dark"] .ch .who span{background:#f1e9ff;color:var(--play-ink);border-color:var(--play-ink)}
+:root[data-theme="dark"] .mast,:root[data-theme="dark"] .mast h1,:root[data-theme="dark"] .mast p,:root[data-theme="dark"] .foot,:root[data-theme="dark"] .foot a{color:var(--paper)}
+:root[data-theme="dark"] .seen,:root[data-theme="dark"] .seen p,:root[data-theme="dark"] .seen li,:root[data-theme="dark"] .seen h2,:root[data-theme="dark"] .seen h3{color:var(--play-ink)}
+@media (prefers-color-scheme:dark){
+:root:not([data-theme="light"]) .ch,:root:not([data-theme="light"]) .has3d .ch,:root:not([data-theme="light"]) .ch .lead,:root:not([data-theme="light"]) .ch li,:root:not([data-theme="light"]) .ch a,:root:not([data-theme="light"]) .ch h2,:root:not([data-theme="light"]) .ch .ours,:root:not([data-theme="light"]) .ch figcaption{color:var(--play-ink)}
+:root:not([data-theme="light"]) .ch{background:var(--play-paper)}
+:root:not([data-theme="light"]) .ch .who span{background:#f1e9ff;color:var(--play-ink);border-color:var(--play-ink)}
+:root:not([data-theme="light"]) .mast,:root:not([data-theme="light"]) .mast h1,:root:not([data-theme="light"]) .mast p,:root:not([data-theme="light"]) .foot,:root:not([data-theme="light"]) .foot a{color:var(--paper)}
+:root:not([data-theme="light"]) .seen,:root:not([data-theme="light"]) .seen p,:root:not([data-theme="light"]) .seen li,:root:not([data-theme="light"]) .seen h2,:root:not([data-theme="light"]) .seen h3{color:var(--play-ink)}
+}
+
+/* first80 (Astra QA on first80b): the keepsake and postcard dialogs are cream in play, so their text is ink in both theme states */
+:root[data-theme="dark"] .keep,:root[data-theme="dark"] .keep h3,:root[data-theme="dark"] .keep p,:root[data-theme="dark"] .postcard,:root[data-theme="dark"] .postcard h3,:root[data-theme="dark"] .postcard p,:root[data-theme="dark"] .postcard .btn{color:var(--play-ink)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .keep,:root:not([data-theme="light"]) .keep h3,:root:not([data-theme="light"]) .keep p,:root:not([data-theme="light"]) .postcard,:root:not([data-theme="light"]) .postcard h3,:root:not([data-theme="light"]) .postcard p,:root:not([data-theme="light"]) .postcard .btn{color:var(--play-ink)}}
 </style>
+<link rel="stylesheet" href="visual-polish.css">
 </head>
 <body>
 <canvas id="world" data-balloon="models/balloon.glb.txt" aria-label="Island Hop: a floating world of eight toy islands with a hot-air balloon you fly between them"></canvas>
@@ -367,14 +432,15 @@ button{font:inherit;color:inherit;cursor:pointer}
     <li>Before the visit, fifty notes went out to friends at Blizzard: on campus today with USC students and GGP scholars, hope our paths cross.</li>
     <li>Up next with them: a tentative Spring 463 visit on Jan 28, 2027.</li>
   </ul>
-  <div class="who"><span>Joe</span><span>Alex</span><span>Ed</span></div>
+  <div class="who"><span>Joe</span><span>Alex</span><span>Ed</span><span>Crystal</span></div>
 </article>
 
 <article class="ch" data-kind="campus" id="teach" data-value="CREATE" data-model="models/campus.glb.txt" data-color="#e63946" data-label="Teaching" style="--dot:oklch(0.55 0.18 25)">
   <p class="mono">Fall 2026 · USC</p>
   <h2>The classroom is lit up</h2>
-  <p class="lead">A classroom can be a place to notice how the magic works. A character moving on ones or twos. A world changing as it becomes another medium. Then the better question: what will you make with what you notice?</p>
+  <p class="lead">At USC, the question reaches beyond what AI can make. What judgment will our Trojans need to build, and to lead? Across disciplines and industries in Los Angeles and around the world, the creative work and the responsibility belong together.</p>
   <ul>
+    <li>A current focus: preparing Trojans to enter the global workforce with the skills to build, the judgment to use AI responsibly, and the confidence to lead.</li>
     <li>CTIN 290 went Spider-Verse on ones and twos, then Kaiju No. 8 and Blue Lock, with a new word on the board: <b>Stylization</b>.</li>
     <li>Adaptation day: the same world in two media, Minecraft and The Last of Us side by side.</li>
     <li>Eight syllabi delivered Sep 30: six brand new courses, plus 2 and 4 credit versions of 463.</li>
@@ -390,7 +456,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   <h2>Everyone gets a seat at the table</h2>
   <p class="lead">The table keeps getting longer. Undergraduates and graduate students, teachers and partners, a game night that makes space for another chair. The joy here is not only getting through a door; it is helping someone else find theirs.</p>
   <ul>
-    <li>Scholars is one program now. Grad students are CYSTEM Scholars, undergrads are GGP Scholars. Applications close Fri Oct 2, 9:59 PM.</li>
+    <li>Scholars is one program now. Grad students are CYSTEM Scholars, undergrads are GGP Scholars. The announced application deadline was October 2.</li>
     <li>The QR went to twelve faculty and partners. Games for Change, ESA, DePaul and CMU wrote back warmly.</li>
     <li>The Houser family gave CYSTEM another year. Your words: <q>another year of belief in our CYSTEM scholars.</q></li>
     <li>Sunblink said yes to 2027.</li>
@@ -441,17 +507,28 @@ button{font:inherit;color:inherit;cursor:pointer}
 </article>
 
 <article class="ch" data-kind="voxel" id="home" data-value="RETURN" data-model="models/voxel.glb.txt" data-color="#2ec4b6" data-label="Home" style="--dot:oklch(0.62 0.15 145)">
-  <p class="mono">Home · All roads</p>
-  <h2>All roads lead home</h2>
-  <p class="lead">In Gordtopia, a path is more than a way across the map. It is something built with James, Henry and Oscar, a landmark remembered, and a way back to the bell. All roads lead home.</p>
+  <p class="mono">Oct 3 · Gordtopia</p>
+  <h2>A new view of home</h2>
+  <p class="lead">The October 3 expedition brought back white peaks, red-and-gold woodland, two villages and portals in very different states. The high lookout changes the picture: places that felt separate become one landscape.</p>
+  <figure class="plate"><img src="art/postcard-3837.webp" alt="The lookout at 142 in Gordtopia: red and gold canopy, a lake and a village on the far shore" width="720" height="394" loading="lazy"><figcaption>From the lookout at -7617, 142, 30. <a href="https://gordonusc.github.io/gordtopia/west-2026-10-03/" target="_blank" rel="noopener">See the expedition photos</a></figcaption></figure>
   <ul>
-    <li>Gordtopia went online Sep 15: one hub, eight pages, built with James, Henry and Oscar.</li>
+    <li>31 photographs and two short walks, now gathered in The Western Gates.</li>
+    <li>A lookout at -7617, 142, 30; a mushroom-roof hut; a snow village; and a return to Blossomgate.</li>
+    <li>The gold-crowned frame was unlit. A nearby Nether connection is possible, but the photographs do not prove it.</li>
+    <li>Gordtopia went online Sep 15: one hub, eight pages, built with James, Henry and Oscar. All roads lead home.</li>
+  </ul>
+  <details class="morehome"><summary>More from Home</summary>
+  <ul>
     <li>After Hours 1.0 went live Sep 21. Edition 2, <i>The Mixer</i>, followed two days later.</li>
     <li>Good-morning memes went out to twelve friends, and an evening wave followed.</li>
     <li>The Style Atlas: ten 3D styles and sixteen bass styles, Jersey Club included. This world is one of them, the tilt-shift diorama.</li>
+  </ul>
+  </details>
+  <ul class="dated">
     <li data-when="2026-12-12">December: John Summit at the Coliseum on the 12th, then Stevie Wonder's <i>Songs in the Key of Life</i> at 50 on the 19th, Row 1. New Year's Eve at Countdown with Joe, your rave.</li>
   </ul>
   <div class="who"><span>Joe</span><span>James</span><span>Henry</span><span>Oscar</span></div>
+  <p class="ours"><b>Our reading, Astra and Darby:</b> you are not only collecting places. You are making a world legible enough to return to, and inviting other people to leave a mark in it.</p>
 </article>
 </main>
 <section class="seen" id="seenText" aria-label="What we see">
@@ -459,7 +536,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   <h2>You keep making belonging tangible</h2>
   <p>Our reading: you keep making belonging tangible. A player can see someone like themselves on the field. A student can walk through a studio door. A friend can take a seat at a table, or leave a landmark in a world you build together.</p>
   <p>And not everything has to mean something. A good catch, a ridiculous flight, a song that arrives at the right moment. This world should give you those too.</p>
-  <p>Across these chapters, enjoyment often becomes an invitation. That is the connection the growing crew makes visible.</p>
+  <p>Across these chapters, enjoyment often becomes an invitation. That is the connection the growing crew makes visible. The repeating shape is a threshold: a studio door, a place on a team, a classroom, a portal. You make those thresholds easier to cross. The game should do the same for a friend arriving here for the first time.</p>
   <h3>How the game carries that</h3>
   <ul>
     <li><b>Passengers climb aboard with every stamp.</b> Belonging, made into a mechanic.</li>
@@ -469,7 +546,7 @@ button{font:inherit;color:inherit;cursor:pointer}
     <li><b>Relaxed flight and Just read it.</b> Your life is never locked behind a win.</li>
   </ul>
 </section>
-<p class="foot">Married to Joe since May 3, 2014. Built Oct 2, 2026, from Darby's notes. Islands lifted to 3D from Higgsfield art with Meshy; music, voice and sound by ElevenLabs; sky light from Poly Haven's CC0 "cloud_layers" by Greg Zaal; Joy Circuit, chapter leads and art direction by Astra.</p>
+<p class="foot">Married to Joe since May 3, 2014. Built Oct 2, 2026, from Darby's notes. Updated October 3, 2026: the joyride, the practice court, the painted sky and the western gates. Islands lifted to 3D from Higgsfield art with Meshy; music, voice and sound by ElevenLabs; sky light from Poly Haven's CC0 "cloud_layers" by Greg Zaal; Joy Circuit, chapter leads and art direction by Astra.</p>
 
 <div class="hud">
   <div class="logo">Island Hop<small>Gordon's fall 2026</small></div>
@@ -499,25 +576,41 @@ button{font:inherit;color:inherit;cursor:pointer}
   <div class="scoretally" id="tally" hidden aria-live="polite"><p class="mono" id="tallyTitle"></p><ol id="tallyList"></ol><div class="eq"><span class="chips" id="tallyBase">0</span><i>×</i><span class="multv" id="tallyMult">1</span></div><div class="total" id="tallyTotal"></div><p class="mono" id="tallyTarget"></p></div>
   <div class="keep" id="keep" hidden role="dialog" aria-label="Keepsake found"><p class="mono" id="keepNo"></p><h3 id="keepTitle"></h3><p id="keepText"></p><button class="btn sun" id="keepClose" type="button">Keep flying</button></div>
 
+  <div class="joycard" id="joyCard" hidden role="status" aria-live="polite"><p class="mono" id="joyRings">0 / 3 rings</p><p id="joyLine">Hold Space, or tap BOOST, to lift.</p><button class="skip" id="joySkip" type="button">Skip to the islands</button></div>
+  <button class="joyboost" id="joyBoost" type="button" hidden aria-label="Boost: hold to lift">BOOST<small>hold</small></button>
+  <div class="overlay" id="route" hidden><div class="panel routepanel" id="routePanel" tabindex="-1" role="dialog" aria-labelledby="routeTitle"><h2 id="routeTitle">Pick a <em>route</em></h2><p>Two islands, two kinds of fun. I fly; you play.</p>
+    <div class="routes">
+      <button class="rcard" id="routeCatch" type="button"><b>Play catch</b><span>Catch gold, dodge red. Stay in for thirty seconds.</span><em>Fly to Dodgeball →</em></button>
+      <button class="rcard" id="routeHome" type="button"><b>Explore Home</b><span>Build a path that stays. Discover the new Gordtopia photographs.</span><em>Fly to Home →</em></button>
+    </div>
+    <p><button class="btn" id="routeFree" type="button">Fly free instead</button></p></div></div>
+  <div class="keep postcard" id="postcard" hidden role="dialog" aria-label="Fresh from Gordtopia"><p class="mono">Fresh from Gordtopia · Oct 3</p><img src="art/postcard-3837.webp" alt="A high lookout over red and gold woodland in Gordtopia" width="720" height="394"><h3>A high lookout. A gold-crowned gate. A new way to see home.</h3><p>Thirty-one photographs and two short walks from the October 3 expedition, gathered in The Western Gates.</p><div class="row"><button class="btn sun" id="postcardHome" type="button">Visit Home</button><a class="btn" href="https://gordonusc.github.io/gordtopia/west-2026-10-03/" target="_blank" rel="noopener">See the photos</a><button class="btn" id="postcardClose" type="button">Later</button></div></div>
+  <div class="overlay" id="gl" hidden><div class="panel" role="alertdialog" aria-labelledby="glTitle"><h2 id="glTitle">The view <em>paused</em></h2><p>Your browser dropped the 3D graphics for a moment, so the islands stopped drawing. Your progress is saved. Reload to fly again, or read the story instead.</p><div class="row"><button class="btn go" id="glReload" type="button">Reload</button><button class="btn" id="glRead" type="button">Just read it</button></div></div></div>
   <div class="overlay" id="start">
     <video class="trailer" src="audio/trailer.mp4" autoplay muted loop playsinline aria-hidden="true"></video>
     <div class="panel">
       <h2>Island <em>Hop</em></h2>
-      <p>Your fall, as eight floating islands. Ride the star trails, thread the rings, stick the landing, win each island's toy. Three stars per island. Eight stamps open the Long Walk Home. Or race the same course in Joy Circuit, solo or pass-the-device.</p>
-      <div class="keys">
-        <kbd class="desk">Hold Space</kbd><span class="desk">fire the burner: rise and surge</span>
-        <kbd class="desk">W A S D</kbd><span class="desk">steer; follow the star trail</span>
-        <kbd class="desk">Land on target</kbd><span class="desk">sink onto it; dead center is a Bullseye</span>
-        <kbd class="desk">Click island</kbd><span class="desk">autopilot there (E to auto-land)</span>
-        <kbd class="touch">Left thumb</kbd><span class="touch">steer, anywhere on the left</span>
-        <kbd class="touch">Hold BURN</kbd><span class="touch">rise and surge</span>
-        <kbd class="touch">Tap island</kbd><span class="touch">autopilot there</span>
-      </div>
-      <div class="row"><button class="btn go" id="go" type="button">▶ Start flying</button><button class="btn" id="relaxed" type="button">Relaxed flight</button></div>
-      <div class="row"><button class="btn sun" id="circuit1" type="button">Joy Circuit · solo</button><button class="btn sun" id="circuit2" type="button">Joy Circuit · 2 players</button><button class="btn" id="read" type="button">Just read it</button></div>
-      <p><button class="btn" id="seenBtn2" type="button">What we see</button> <button class="btn" id="storyBtn" type="button" aria-pressed="false">Story voice off</button></p>
-      <p class="audioprefs"><button class="btn" id="musicBtn" type="button" aria-pressed="true">Music on</button> <button class="btn" id="fxBtn" type="button" aria-pressed="true">Effects on</button></p>
-      <p class="mono credit">Joy Circuit scoring by Astra · world and flight by Darby</p>
+      <p class="mono forfriends">A little lift. A world to explore.</p>
+      <p>Lift through the rings, pick an island, bring a little joy home. Gordon's fall 2026 as eight floating islands, each with a toy to play.</p>
+      <div class="row primary"><button class="btn go" id="joyride" type="button">▶ Take a joyride</button></div>
+      <div class="row"><button class="btn" id="go" type="button">Fly free</button><button class="btn" id="read" type="button">Just read it</button><button class="btn" id="soundOpt" type="button" aria-pressed="false">♪ Add sound</button></div>
+      <details class="more" id="more">
+        <summary>More ways in, and the controls</summary>
+        <div class="row"><button class="btn" id="guided" type="button">Guided hop</button><button class="btn" id="relaxed" type="button">Relaxed flight</button><button class="btn sun" id="circuit1" type="button">Joy Circuit · solo</button><button class="btn sun" id="circuit2" type="button">Joy Circuit · 2 players</button></div>
+        <div class="keys">
+          <kbd class="desk">Hold Space</kbd><span class="desk">fire the burner: rise and surge</span>
+          <kbd class="desk">W A S D</kbd><span class="desk">steer; follow the star trail</span>
+          <kbd class="desk">Land on target</kbd><span class="desk">sink onto it; dead center is a Bullseye</span>
+          <kbd class="desk">Click island</kbd><span class="desk">autopilot there (E to auto-land)</span>
+          <kbd class="touch">Left thumb</kbd><span class="touch">steer, anywhere on the left</span>
+          <kbd class="touch">Hold BURN</kbd><span class="touch">rise and surge</span>
+          <kbd class="touch">Tap island</kbd><span class="touch">autopilot there</span>
+        </div>
+        <p>Three stars per island. Eight stamps open the Long Walk Home. Joy Circuit races the same course, solo or pass-the-device.</p>
+        <p><button class="btn" id="seenBtn2" type="button">What we see</button> <button class="btn" id="storyBtn" type="button" aria-pressed="false">Story voice off</button> <button class="btn" id="calmBtn" type="button" aria-pressed="false">Calm motion off</button></p>
+        <p class="audioprefs"><button class="btn" id="musicBtn" type="button" aria-pressed="true">Music on</button> <button class="btn" id="fxBtn" type="button" aria-pressed="true">Effects on</button></p>
+      </details>
+      <p class="mono credit">Joy Circuit scoring by Astra · world and flight by Darby · sky painted with Higgsfield · updated October 3, 2026</p>
       <p class="mono return"><a id="returnHub" href="https://gordonusc.github.io/the-cabinet/good-company/">← Good Company: the four doors</a></p>
       <p class="loading">Loading the islands…</p>
     </div>
@@ -575,7 +668,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   };
   document.getElementById('read').onclick=function(){root.classList.add('reading');document.getElementById('start').hidden=true;music.pause();scrollTo(0,0)};
   document.getElementById('backWorld').onclick=function(){root.classList.remove('reading');scrollTo(0,0);if(on){music.play().catch(function(){})}};
-  document.getElementById('help').onclick=function(){document.getElementById('start').hidden=false};
+  document.getElementById('help').onclick=function(){document.getElementById('start').hidden=false;var mo=document.getElementById('more');if(mo)mo.open=true};
   var seen=document.getElementById('seenText'),sc=document.createElement('button');sc.className='btn close';sc.type='button';sc.textContent='Close';sc.onclick=function(){seen.classList.remove('open')};seen.prepend(sc);
   function openSeen(){seen.classList.add('open')}
   document.getElementById('seenBtn').onclick=openSeen;document.getElementById('seenBtn2').onclick=openSeen;
