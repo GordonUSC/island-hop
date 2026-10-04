@@ -920,25 +920,27 @@ function applyTheme() {
 applyTheme();
 document.addEventListener('themechange', applyTheme);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
-const audioPref = { sound: true, music: true, fx: true };
-try { const a = JSON.parse(localStorage.getItem('islandhop-audio') || 'null'); if (a) { audioPref.sound = a.sound !== false; audioPref.music = a.music !== false; audioPref.fx = a.fx !== false; } } catch (e) {}
+const audioPref = { sound: true, music: true, fx: true, mode: 'islands' }; /* mode: 'islands' changes the song per island, 'theme' keeps one flight theme */
+try { const a = JSON.parse(localStorage.getItem('islandhop-audio') || 'null'); if (a) { audioPref.sound = a.sound !== false; audioPref.music = a.music !== false; audioPref.fx = a.fx !== false; if (a.mode === 'theme') audioPref.mode = 'theme'; } } catch (e) {}
 /* first visit: silent until the player opts in (start card "Add sound" = the same master switch); a returning player keeps the saved choice */
 let audioStored = false; try { audioStored = localStorage.getItem('islandhop-audio') !== null; } catch (e) {}
 if (!audioStored) audioPref.sound = false;
 function applyAudio(persist) {
   musicOn = audioPref.sound && audioPref.music; muted.fx = !(audioPref.sound && audioPref.fx);
-  if (!musicOn && typeof MUS === 'object') Object.keys(MUS).forEach((k) => { if (MUS[k]) { MUS[k].volume = 0; musVol[k] = 0; } }); /* silence now; resume fades in */
+  if (!musicOn && typeof MUS === 'object') Object.keys(MUS).forEach((k) => { if (MUS[k]) { MUS[k].pause(); if (canVol) MUS[k].volume = 0; musVol[k] = 0; } }); /* off means paused: iPhone Safari ignores .volume, so a zero volume alone never silences it */
   if (muted.fx) { burner(false); liveSounds.forEach((c) => c.pause()); liveSounds.clear(); }
   if (!audioPref.sound) voiceCancel(); /* master off silences an active cue now */
-  if (musicOn && started) startMusic();
+  if (musicOn && started) { startMusic(); primeMusic(); }
   const set = (id, on, a, b) => { const el = $(id); if (el) { el.textContent = on ? a : b; el.setAttribute('aria-pressed', on); } };
-  set('#sound', audioPref.sound, '♪ On', '♪ Off'); set('#soundOpt', audioPref.sound, '♪ Sound on', '♪ Add sound'); set('#musicBtn', audioPref.music, 'Music on', 'Music off'); set('#fxBtn', audioPref.fx, 'Effects on', 'Effects off');
+  set('#sound', audioPref.sound, '♪ On', '♪ Off'); set('#soundOpt', audioPref.sound, '♪ Sound on', '♪ Add sound'); set('#musicBtn', audioPref.music, 'Music on', 'Music off'); set('#fxBtn', audioPref.fx, 'Effects on', 'Effects off'); set('#modeBtn', audioPref.mode !== 'theme', 'Music: changes by island', 'Music: one steady theme');
   if (persist) try { localStorage.setItem('islandhop-audio', JSON.stringify(audioPref)); } catch (e) {}
 }
 $('#sound').addEventListener('click', () => { audioPref.sound = !audioPref.sound; applyAudio(true); });
 if ($('#soundOpt')) $('#soundOpt').onclick = () => $('#sound').click(); /* the start card's consent button is the master switch, not a second one */
 if ($('#musicBtn')) $('#musicBtn').onclick = () => { audioPref.music = !audioPref.music; applyAudio(true); };
 if ($('#fxBtn')) $('#fxBtn').onclick = () => { audioPref.fx = !audioPref.fx; applyAudio(true); };
+if ($('#modeBtn')) $('#modeBtn').onclick = () => { audioPref.mode = audioPref.mode === 'theme' ? 'islands' : 'theme'; applyAudio(true); };
+if ($('#mixBtn')) { const mp = $('#mixPanel'); $('#mixBtn').onclick = () => { mp.hidden = !mp.hidden; $('#mixBtn').setAttribute('aria-expanded', !mp.hidden); }; document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !mp.hidden) { mp.hidden = true; $('#mixBtn').setAttribute('aria-expanded', 'false'); } }); }
 
 /* ---------- finale ---------- */
 let finaleShown = false, finaleT = 0;
@@ -1369,37 +1371,54 @@ window.__hop.circuit = () => circuit; window.__hop.circuitTurnOver = () => { if 
    (ElevenLabs music v2.5, flow DfOiy6n5549IJTUoqjRd; loudness matched to -18 LUFS; UNLISTENED by a human as of this build) */
 let musicOn = true, musicStarted = false;
 const ISLAND_KINDS = ['pier', 'studio', 'campus', 'table', 'arena', 'court', 'desert', 'voxel'];
+const ISLAND_SONGS = ISLAND_KINDS; /* every island kind has its own song file */
 const MUS = { flight: null, toy: $('#mToy'), boss: $('#mBoss'), finale: $('#mFinale') };
 const musVol = { flight: 0, toy: 0, boss: 0, finale: 0 };
-const isleTrack = (k) => { if (!MUS[k]) { const a = new Audio(`audio/islands/${k}.mp3`); a.loop = true; a.preload = 'auto'; a.volume = 0; MUS[k] = a; musVol[k] = 0; if (musicStarted) a.play().catch(() => {}); } return MUS[k]; };
+/* one song at a time. Where .volume works (desktop) the outgoing song fades out while the next fades in, then pauses;
+   where it does not (iPhone, iPad) the switch is a clean cut. Only the song you hear is ever playing. */
+const canVol = (() => { try { const t = document.createElement('audio'); t.volume = 0.5; return t.volume === 0.5; } catch (e) { return true; } })();
+const isleTrack = (k) => { if (!MUS[k]) { const a = new Audio(`audio/islands/${k}.mp3`); a.loop = true; a.preload = 'none'; if (canVol) a.volume = 0; MUS[k] = a; musVol[k] = 0; } return MUS[k]; };
 MUS.flight = isleTrack('flight'); if ($('#music')) $('#music').removeAttribute('src');
 function startMusic() {
   if (musicStarted) return; musicStarted = true;
-  Object.values(MUS).forEach((a) => { if (!a) return; a.volume = 0; a.loop = true; a.play().catch(() => {}); });
+  Object.values(MUS).forEach((a) => { if (!a) return; a.loop = true; if (canVol) a.volume = 0; });
+  primeMusic();
+  const k = musicState(), a = MUS[k] || isleTrack(k); if (a && musicOn) a.play().catch(() => {}); /* start only the song for where you are, inside the tap that allowed sound */
+}
+/* iPhone only lets a song start later if it was started once inside a tap: start each one muted for an instant, inside the tap */
+function primeMusic() {
+  if (canVol) return;
+  ISLAND_SONGS.forEach(isleTrack);
+  Object.values(MUS).forEach((a) => { if (!a || a.dataset.primed) return; a.dataset.primed = '1'; a.muted = true; const p = a.play(); const done = () => { a.pause(); a.muted = false; }; if (p && p.then) p.then(done, () => { a.muted = false; delete a.dataset.primed; }); else done(); });
 }
 /* returns {layer: weight}; weights sum to 1 */
 function musicMix() {
   if (finaleShown || finaleT > 0) return { finale: 1 };
   if (circuitOn || (game && game.boss)) return { boss: 1 };
-  if ((player.mode === 'game' || player.mode === 'card') && islands[player.at]) { const k = islands[player.at].kind; return ISLAND_KINDS.includes(k) ? { [k]: 1 } : { toy: 1 }; }
-  if (typeof near === 'number' && near >= 0 && islands[near]) return { flight: 0.55, [islands[near].kind]: 0.45 };
-  return { flight: 1 };
+  if (audioPref.mode === 'theme') return { flight: 1 };
+  if ((player.mode === 'game' || player.mode === 'card') && islands[player.at]) { const k = islands[player.at].kind; return ISLAND_SONGS.includes(k) ? { [k]: 1 } : { toy: 1 }; }
+  return { flight: 1 }; /* approaching an island no longer layers two songs; its song starts when you land */
 }
 function musicState() { const m = musicMix(); return Object.keys(m).sort((a, b) => m[b] - m[a])[0]; }
 function tickMusic(dt) {
   if (!musicStarted) return;
-  const mix = musicMix(), master = (musicOn && !document.hidden ? 0.34 : 0) * (vPlaying ? 0.5 : 1);
-  Object.keys(mix).forEach((k) => ISLAND_KINDS.includes(k) && isleTrack(k));
+  const reading = document.documentElement.classList.contains('reading');
+  const mix = musicMix(), on = musicOn && !document.hidden && !reading, master = (on ? 0.34 : 0) * (vPlaying ? 0.5 : 1);
+  Object.keys(mix).forEach((k) => ISLAND_SONGS.includes(k) && isleTrack(k));
   Object.keys(MUS).forEach((k) => {
-    if (!MUS[k]) return;
+    const a = MUS[k]; if (!a) return;
+    const want = on && (mix[k] || 0) > 0;
+    if (!canVol) { if (want) { if (a.paused) a.play().catch(() => {}); } else if (!a.paused) a.pause(); return; }
     const target = (mix[k] || 0) * master;
     musVol[k] += (target - musVol[k]) * Math.min(1, dt * 1.6);
-    MUS[k].volume = Math.max(0, Math.min(1, musVol[k]));
+    if (!want && musVol[k] < 0.01) { musVol[k] = 0; a.volume = 0; if (!a.paused) a.pause(); return; } /* faded out: stop it for real */
+    if (want && a.paused) a.play().catch(() => {});
+    a.volume = Math.max(0, Math.min(1, musVol[k]));
   });
 }
 /* hidden page: silence now, synchronously (the render loop that ramps volume is stopped while hidden) */
 document.addEventListener('visibilitychange', () => {
-  Object.keys(MUS).forEach((k) => { const a = MUS[k]; if (!a) return; if (document.hidden) { a.volume = 0; musVol[k] = 0; a.pause(); } else if (musicStarted) a.play().catch(() => {}); });
+  if (document.hidden) Object.keys(MUS).forEach((k) => { const a = MUS[k]; if (!a) return; if (canVol) a.volume = 0; musVol[k] = 0; a.pause(); }); /* coming back: tickMusic resumes only the current song */
 });
 $('#go').addEventListener('click', startMusic);
 

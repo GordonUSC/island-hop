@@ -272,6 +272,11 @@ button{font:inherit;color:inherit;cursor:pointer}
   box-shadow:var(--play-shadow);border-radius:22px;
 }
 .hud .tools{gap:6px}
+.mixpanel{position:fixed;right:14px;top:72px;z-index:9;display:grid;gap:8px;width:min(300px,calc(100vw - 28px));padding:14px;background:#fff8e9;color:#173c39;border:2px solid #173c39;border-radius:18px;box-shadow:0 10px 30px #173c3933}
+.mixpanel[hidden]{display:none}
+.mixpanel .btn{justify-content:flex-start;min-height:44px}
+.mixhead{margin:0;font:800 18px Figtree}.mixhead small{display:block;font:600 12px Figtree;opacity:.75}
+.mixnote{margin:0;font:600 12px Figtree;opacity:.8}
 .hud .tools .btn{border-radius:14px;font-weight:700;min-height:44px;box-shadow:0 3px 0 #ad986954,0 4px 12px #173c3917}
 .hud .tools .btn:hover{transform:translateY(-2px)}
 .hud .logo{color:#fff8e9;-webkit-text-stroke:5px #173c39}
@@ -554,9 +559,17 @@ button{font:inherit;color:inherit;cursor:pointer}
     <button class="btn" id="sound" type="button" aria-pressed="true">♪ On</button>
     <button class="btn" id="theme" type="button" aria-label="Day or night">☾</button>
     <button class="btn" id="tallySpeed" type="button" title="Score tally speed">1x</button>
-    <button class="btn" id="voiceBtn" type="button" aria-pressed="true">Voice on</button>
+    <button class="btn" id="mixBtn" type="button" aria-expanded="false" aria-controls="mixPanel">Sound mix</button>
     <button class="btn" id="seenBtn" type="button">What we see</button>
     <button class="btn" id="help" type="button" aria-label="How to play">?</button>
+  </div>
+  <div class="mixpanel" id="mixPanel" role="group" aria-label="Sound mix" hidden>
+    <p class="mixhead">Sound mix <small>one song at a time</small></p>
+    <button class="btn" id="musicBtn" type="button" aria-pressed="true">Music on</button>
+    <button class="btn" id="modeBtn" type="button" aria-pressed="true">Music: changes by island</button>
+    <button class="btn" id="fxBtn" type="button" aria-pressed="true">Effects on</button>
+    <button class="btn" id="voiceBtn" type="button" aria-pressed="true">Voice on</button>
+    <p class="mixnote">♪ On / Off up top silences everything at once.</p>
   </div>
   <nav class="passport" id="passport" aria-label="Passport stamps"><span class="tally"><span id="count">0</span> / 8 stamps<br><span id="stars">0</span> / 24 ★<br><span id="keepCount">0</span> / 11 keepsakes</span></nav>
   <div class="gauges" aria-live="polite"><div class="heat" id="heat" title="Burner heat"><i></i><i></i><i></i></div><div class="joy"><span id="joy">0</span> joy</div><div class="combo" id="combo"></div></div>
@@ -608,8 +621,7 @@ button{font:inherit;color:inherit;cursor:pointer}
         </div>
         <p>Three stars per island. Eight stamps open the Long Walk Home. Joy Circuit races the same course, solo or pass-the-device.</p>
         <p><button class="btn" id="seenBtn2" type="button">What we see</button> <button class="btn" id="storyBtn" type="button" aria-pressed="false">Story voice off</button> <button class="btn" id="calmBtn" type="button" aria-pressed="false">Calm motion off</button></p>
-        <p class="audioprefs"><button class="btn" id="musicBtn" type="button" aria-pressed="true">Music on</button> <button class="btn" id="fxBtn" type="button" aria-pressed="true">Effects on</button></p>
-      </details>
+              </details>
       <p class="mono credit">Joy Circuit scoring by Astra · world and flight by Darby · sky painted with Higgsfield · updated October 3, 2026</p>
       <p class="mono return"><a id="returnHub" href="https://gordonusc.github.io/the-cabinet/good-company/">← Good Company: the four doors</a></p>
       <p class="loading">Loading the islands…</p>
@@ -660,14 +672,12 @@ button{font:inherit;color:inherit;cursor:pointer}
   function dark(){return root.dataset.theme==='dark'}
   var th=document.getElementById('theme');th.textContent=dark()?'☀':'☾';
   th.onclick=function(){root.dataset.theme=dark()?'light':'dark';th.textContent=dark()?'☀':'☾';document.dispatchEvent(new Event('themechange'))};
-  var snd=document.getElementById('sound'),on=true;
-  snd.onclick=function(){on=!on;snd.textContent=on?'♪ On':'♪ Off';snd.setAttribute('aria-pressed',on);if(on){music.play().catch(function(){})}else{music.pause();voice.pause()}};
+  /* sound switches live in game.js (one owner); this block only handles reading mode and the start card */
   document.getElementById('go').onclick=function(){
     document.getElementById('start').hidden=true;
-    music.volume=.32;music.play().catch(function(){});
   };
-  document.getElementById('read').onclick=function(){root.classList.add('reading');document.getElementById('start').hidden=true;music.pause();scrollTo(0,0)};
-  document.getElementById('backWorld').onclick=function(){root.classList.remove('reading');scrollTo(0,0);if(on){music.play().catch(function(){})}};
+  document.getElementById('read').onclick=function(){root.classList.add('reading');document.getElementById('start').hidden=true;voice.pause();scrollTo(0,0)};
+  document.getElementById('backWorld').onclick=function(){root.classList.remove('reading');scrollTo(0,0)};
   document.getElementById('help').onclick=function(){document.getElementById('start').hidden=false;var mo=document.getElementById('more');if(mo)mo.open=true};
   var seen=document.getElementById('seenText'),sc=document.createElement('button');sc.className='btn close';sc.type='button';sc.textContent='Close';sc.onclick=function(){seen.classList.remove('open')};seen.prepend(sc);
   function openSeen(){seen.classList.add('open')}
