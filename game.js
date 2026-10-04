@@ -14,6 +14,8 @@ import * as JC from './astra/circuit.js';
 import * as TT from './astra/tabletop.mjs';
 import { mountFeedback } from './astra/feedback.mjs';
 import { createIslandToy } from './astra/depth/phase3-adapter.js';
+/* personal flight (Astra's module, ENGINE-HANDOFF 10/3): resolved by a dynamic import at the end of the file so a missing or failing module never stops the game */
+let personalFlight = null;
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 const ENV = new URLSearchParams(location.search).get('env') || 'hdr';
 const LOOK = new URLSearchParams(location.search).get('look') || 'lit';
@@ -231,11 +233,11 @@ loader.load($('#world').dataset.balloon, (gl) => {
   const c = new THREE.Vector3(); box.getCenter(c); root.position.set(-c.x * k, -box.min.y * k, -c.z * k);
   const bm = []; root.traverse((o) => { if (o.isMesh) bm.push(o); });
   bm.forEach((o) => { o.material = LOOK === 'lit' ? new THREE.MeshStandardMaterial({ map: o.material.map || null, roughness: 0.6 }) : new THREE.MeshToonMaterial({ map: o.material.map || null, gradientMap: RAMP }); if (o.material.map) o.material.map.colorSpace = THREE.SRGBColorSpace; o.castShadow = true; if (LOOK !== 'lit') inked(o); });
-  player0.g.add(root);
+  root.userData.personalBalloon = true; player0.g.add(root); if (personalFlight && personalFlight.setBalloon) personalFlight.setBalloon(root);
 }, undefined, () => {
   const env = inked(M(new THREE.SphereGeometry(1, 20, 14), 0xff5d73)); env.scale.set(1, 1.15, 1); env.position.y = 1.9;
   const bas = inked(M(new THREE.BoxGeometry(0.6, 0.45, 0.6), 0xb07a45)); bas.position.y = 0.25;
-  player0.g.add(env, bas);
+  env.userData.personalBalloon = true; player0.g.add(env, bas); if (personalFlight && personalFlight.setBalloon) personalFlight.setBalloon(env);
 });
 const shadowDisc = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24), new THREE.MeshBasicMaterial({ color: 0x241b3a, transparent: true, opacity: 0.22, depthWrite: false }));
 shadowDisc.rotation.x = -Math.PI / 2; scene.add(shadowDisc);
@@ -766,6 +768,7 @@ async function winGame() {
   hideBanner(); gameRoot.clear(); game = null; runId++;
   const val = chapters[isl.i].dataset.value; if (val) setTimeout(() => verbCard(val, chapters[isl.i].dataset.label), 250);
   if (completeIsland(facts).fresh || deferredFresh) { if (deferredFresh) celebrateStamp(isl.i); }
+  if (personalFlight && personalFlight.event) personalFlight.event('win', { kind: isl.kind, label: label(isl.i) });
   setTimeout(() => { if (player.mode === 'card' && player.at === isl.i) openCard(isl.i); }, 1000);
   player.mode = 'card';
   if (joyride.on) { joyride.on = false; joyride.phase = 'done'; setTimeout(showPostcard, 2600); }
@@ -843,6 +846,7 @@ const tut = { burned: false, stars: 0, draft: false };
 const keys = new Set();
 addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
+  if (k !== 'escape' && ((e.target && /input|textarea|select/i.test(e.target.tagName)) || document.documentElement.classList.contains('pilot-open'))) return; /* personal flight: the hangar and form fields own the keys; Escape passes for the module's close */
   if (k === ' ' && typeof joyride === 'object' && joyride.on && !(e.target && /input|textarea/i.test(e.target.tagName))) joyride.tapUntil = Math.max(joyride.tapUntil || 0, performance.now() + 220);
   if (e.target && /input|textarea|button/i.test(e.target.tagName) && k === ' ') return;
   if (k.startsWith('arrow') || k === ' ') e.preventDefault();
@@ -887,7 +891,7 @@ function endPointer(e) {
 canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); dist = Math.min(40, Math.max(10, dist * (1 + e.deltaY * 0.001))); }, { passive: false });
 let glLost = false;
-function overlayOpen() { return glLost || !started || !$('#start').hidden || !$('#route').hidden || !$('#postcard').hidden || !$('#circuitEnd').hidden || $('#seenText').classList.contains('open') || document.documentElement.classList.contains('reading') || !$('#tally').hidden || !$('#draft').hidden; }
+function overlayOpen() { return document.documentElement.classList.contains('pilot-open') || glLost || !started || !$('#start').hidden || !$('#route').hidden || !$('#postcard').hidden || !$('#circuitEnd').hidden || $('#seenText').classList.contains('open') || document.documentElement.classList.contains('reading') || !$('#tally').hidden || !$('#draft').hidden; }
 function click(e) {
   if (overlayOpen()) return;
   const r = canvas.getBoundingClientRect();
@@ -934,6 +938,7 @@ function applyAudio(persist) {
   const set = (id, on, a, b) => { const el = $(id); if (el) { el.textContent = on ? a : b; el.setAttribute('aria-pressed', on); } };
   set('#sound', audioPref.sound, '♪ On', '♪ Off'); set('#soundOpt', audioPref.sound, '♪ Sound on', '♪ Add sound'); set('#musicBtn', audioPref.music, 'Music on', 'Music off'); set('#fxBtn', audioPref.fx, 'Effects on', 'Effects off'); set('#modeBtn', audioPref.mode !== 'theme', 'Music: changes by island', 'Music: one steady theme');
   if (persist) try { localStorage.setItem('islandhop-audio', JSON.stringify(audioPref)); } catch (e) {}
+  if (personalFlight && personalFlight.syncAudio) personalFlight.syncAudio();
 }
 $('#sound').addEventListener('click', () => { audioPref.sound = !audioPref.sound; applyAudio(true); });
 if ($('#soundOpt')) $('#soundOpt').onclick = () => $('#sound').click(); /* the start card's consent button is the master switch, not a second one */
@@ -976,6 +981,7 @@ function loop() {
   const rdt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   let dt = rdt; if (freeze > 0) { freeze -= rdt; dt = 0; }
   const paused = overlayOpen(); if (paused) { dt = 0; voiceOverlayCheck(); }
+  if (personalFlight && personalFlight.tick) personalFlight.tick(rdt);
   if (circuitOn) circuitSyncPause(paused || !$('#circuitEnd').hidden); /* before collisions (Astra CIRCUIT-P2-01) */
   tickJourney(performance.now()); playT += dt; if (game && game.setPaused) game.setPaused(paused || document.hidden);
 
@@ -1005,7 +1011,9 @@ function loop() {
   if (steer.lengthSq() > 0.01 && flying && player.auto) { player.auto = false; player.target = null; }
 
   /* heat: burn to rise and surge, sink when you let go, updrafts refill (A Short Hike / Journey) */
+  const wasBurning = player.burning;
   player.burning = wantBurn && player.heat > 0.02;
+  if (player.burning && !wasBurning && started && !paused && !circuitOn && player.mode === 'fly' && personalFlight && personalFlight.event) personalFlight.event('boost');
   if (player.burning) { player.heat = Math.max(0, player.heat - dt * 0.6); player.vel.y += dt * 13; tut.burned = true; }
   else player.heat = Math.min(3, player.heat + dt * 0.16);
   burner(player.burning && !paused);
@@ -1150,6 +1158,7 @@ function loop() {
 function landOn(i, grade) {
   if (player.mode !== 'fly') return;
   if (circuitOn) { circuitLanding(i); return; }
+  if (personalFlight && personalFlight.event) personalFlight.event('land', { kind: islands[i].kind, label: label(i) });
   landGrade = grade; player.vel.set(0, 0, 0); player.at = i; burner(false); if (grade === 'bull') voice('land_bull');
   const a = anchor(islands[i]);
   if (grade !== 'auto') { const word = { bull: 'BULLSEYE!', great: 'GREAT LANDING', ok: 'LANDED' }[grade]; floatText(a.clone().add(new THREE.Vector3(0, 3, 0)), word); if (grade === 'bull') { burst(a.clone().add(new THREE.Vector3(0, 1, 0)), 60, 7, 6); chime(8, 0.16); freeze = 0.07; } trauma = Math.min(1, trauma + 0.25); }
@@ -1841,6 +1850,26 @@ VERB.pier = ['PLAN!', 'your festival afternoon']; VERB.studio = ['EXPLORE!', 'ma
 /* a hidden page pauses the toy now, even though the render loop stops */
 document.addEventListener('visibilitychange', () => { if (game && game.setPaused) game.setPaused(document.hidden || overlayOpen()); });
 applyAudio(false); /* restore saved Sound, Music and Effects preferences once every module is defined */
+/* personal flight mount (Astra's module contract, 10/3). Dynamic so the engine never depends on the file being present. */
+import('./astra/personal-flight.mjs').then((mod) => {
+  if (!mod || typeof mod.mountPersonalFlight !== 'function') return;
+  personalFlight = mod.mountPersonalFlight({
+    THREE,
+    container: player0.g,
+    getState: () => ({ started, mode: player.mode, circuit: circuitOn, paused: overlayOpen(), sound: audioPref.sound, music: audioPref.music, fx: audioPref.fx, calm: calm || reduce, heat: player.heat }),
+    clearInput: () => { keys.clear(); burnHeld = false; stick.id = null; stick.dx = stick.dy = 0; },
+    lift: () => {
+      if (!started || circuitOn || player.mode !== 'fly' || overlayOpen()) return false;
+      player.heat = 3; player.vel.y = Math.max(player.vel.y, 5);
+      burst(player.pos.clone().add(new THREE.Vector3(0, 1.5, 0)), reduce || calm ? 8 : 32, 5, 5);
+      return true;
+    }
+  });
+  /* a balloon that loaded before the module mounted is handed over now */
+  let marked = null; player0.g.traverse((o) => { if (!marked && o.userData && o.userData.personalBalloon) marked = o; });
+  if (marked && personalFlight && personalFlight.setBalloon) personalFlight.setBalloon(marked);
+  window.__hop.personalFlight = () => personalFlight;
+}).catch(() => { personalFlight = null; });
 
 /* ---------- Phase 2: Bass on the music's own clock, Dodgeball risk and reward, Palm Springs rainbow chain (FEEL.md, ISLAND-REDESIGN.md) ---------- */
 
