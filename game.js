@@ -958,7 +958,7 @@ function finale() {
   longWalk.rings.forEach((r) => scene.remove(r.m)); longWalk.rings = []; longWalk.on = false;
 }
 $('#finaleClose').onclick = () => { $('#finale').hidden = true; };
-$('#replay').onclick = () => { progress.forEach((p) => { p.done = false; p.stars = [false, false, false]; }); joyCount = 0; finaleShown = false; corridors.forEach((c) => { c.got = 0; c.rings.forEach((r) => { r.done = false; r.m.visible = true; r.m.scale.setScalar(1); }); c.stars.forEach((s) => { s.done = false; s.m.visible = true; s.m.position.copy(s.home); }); }); save(); paintStamps(); refreshCorridor(); $('#finale').hidden = true; };
+$('#replay').onclick = () => { if (!window.confirm('Reset stamps, stars, route rings and joy on this device? This cannot be undone.')) return; progress.forEach((p) => { p.done = false; p.stars = [false, false, false]; }); joyCount = 0; finaleShown = false; corridors.forEach((c) => { c.got = 0; c.rings.forEach((r) => { r.done = false; r.m.visible = true; r.m.scale.setScalar(1); }); c.stars.forEach((s) => { s.done = false; s.m.visible = true; s.m.position.copy(s.home); }); }); save(); paintStamps(); refreshCorridor(); $('#finale').hidden = true; };
 
 /* ---------- loop ---------- */
 const shift = { x: 0, y: 0, gx: 0, gy: 0 };
