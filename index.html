@@ -405,7 +405,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .story-nav{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:18px}
 .story-nav a{display:inline-flex;align-items:center;min-height:44px;font-weight:700}
 #flight-fallback{border:2px solid currentColor;padding:14px;border-radius:12px}
-#flight-fallback[hidden],.pilot-invitation[hidden]{display:none}
+#flight-fallback[hidden]{display:none}
+.pilot-invitation[hidden]{display:none}
 </style>
 <link rel="stylesheet" href="visual-polish.css">
 </head>
@@ -413,7 +414,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 <canvas id="world" data-balloon="models/balloon.glb.txt" aria-label="Island Hop: a floating world of eight toy islands with a hot-air balloon you fly between them"></canvas>
 
 <button class="btn go backworld" id="backWorld" type="button">← Back to the islands</button>
-<header class="mast">
+<header class="mast" id="readingStart" tabindex="-1">
   <h1>Gordon's<br><em>fall, in eight islands</em></h1>
   <p>Fall 2026 as a little game world. Here is everything in it, island by island.</p>
   <p id="flight-fallback" role="status" hidden>The flight could not start in this browser. All eight stories are here to read, with no game required. <a href="">Try loading the flight again</a>.</p>
@@ -607,7 +608,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   <div class="keep postcard" id="postcard" hidden role="dialog" aria-label="Fresh from Gordtopia"><p class="mono">Fresh from Gordtopia · Oct 3</p><img src="art/postcard-3837.webp" alt="A high lookout over red and gold woodland in Gordtopia" width="720" height="394"><h3>A high lookout. A gold-crowned gate. A new way to see home.</h3><p>Thirty-one photographs and two short walks from the October 3 expedition, gathered in The Western Gates.</p><div class="row"><button class="btn sun" id="postcardHome" type="button">Visit Home</button><a class="btn" href="https://gordonusc.github.io/gordtopia/west-2026-10-03/" target="_blank" rel="noopener">See the photos</a><button class="btn" id="postcardClose" type="button">Later</button></div></div>
   <div class="overlay" id="gl" hidden><div class="panel" role="alertdialog" aria-labelledby="glTitle"><h2 id="glTitle">The view <em>paused</em></h2><p>Your browser dropped the 3D graphics for a moment, so the islands stopped drawing. Your progress is saved. Reload to fly again, or read the story instead.</p><div class="row"><button class="btn go" id="glReload" type="button">Reload</button><button class="btn" id="glRead" type="button">Just read it</button></div></div></div>
   <div class="overlay" id="start">
-    <video class="trailer" src="audio/trailer.mp4" autoplay muted loop playsinline aria-hidden="true"></video>
+    <video class="trailer" src="audio/trailer.mp4" preload="none" muted loop playsinline aria-hidden="true"></video>
     <div class="panel">
       <h2>Island <em>Hop</em></h2>
       <p class="mono forfriends">A little lift. A world to explore.</p>
@@ -679,12 +680,10 @@ button{font:inherit;color:inherit;cursor:pointer}
   function dark(){return root.dataset.theme==='dark'}
   var th=document.getElementById('theme');th.textContent=dark()?'☀':'☾';
   th.onclick=function(){root.dataset.theme=dark()?'light':'dark';th.textContent=dark()?'☀':'☾';document.dispatchEvent(new Event('themechange'))};
-  /* sound switches live in game.js (one owner); this block only handles reading mode and the start card */
+  /* Sound switches live in game.js; reading transitions live in flight-access.js. */
   document.getElementById('go').onclick=function(){
     document.getElementById('start').hidden=true;
   };
-  document.getElementById('read').onclick=function(){root.classList.add('reading');document.getElementById('start').hidden=true;voice.pause();scrollTo(0,0)};
-  document.getElementById('backWorld').onclick=function(){root.classList.remove('reading');scrollTo(0,0)};
   document.getElementById('help').onclick=function(){document.getElementById('start').hidden=false;var mo=document.getElementById('more');if(mo)mo.open=true};
   var seen=document.getElementById('seenText'),sc=document.createElement('button');sc.className='btn close';sc.type='button';sc.textContent='Close';sc.onclick=function(){seen.classList.remove('open')};seen.prepend(sc);
   function openSeen(){seen.classList.add('open')}
