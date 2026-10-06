@@ -402,6 +402,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* first80 (Astra QA on first80b): the keepsake and postcard dialogs are cream in play, so their text is ink in both theme states */
 :root[data-theme="dark"] .keep,:root[data-theme="dark"] .keep h3,:root[data-theme="dark"] .keep p,:root[data-theme="dark"] .postcard,:root[data-theme="dark"] .postcard h3,:root[data-theme="dark"] .postcard p,:root[data-theme="dark"] .postcard .btn{color:var(--play-ink)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .keep,:root:not([data-theme="light"]) .keep h3,:root:not([data-theme="light"]) .keep p,:root:not([data-theme="light"]) .postcard,:root:not([data-theme="light"]) .postcard h3,:root:not([data-theme="light"]) .postcard p,:root:not([data-theme="light"]) .postcard .btn{color:var(--play-ink)}}
+.story-nav{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:18px}
+.story-nav a{display:inline-flex;align-items:center;min-height:44px;font-weight:700}
+#flight-fallback{border:2px solid currentColor;padding:14px;border-radius:12px}
+#flight-fallback[hidden],.pilot-invitation[hidden]{display:none}
 </style>
 <link rel="stylesheet" href="visual-polish.css">
 </head>
@@ -412,6 +416,9 @@ button{font:inherit;color:inherit;cursor:pointer}
 <header class="mast">
   <h1>Gordon's<br><em>fall, in eight islands</em></h1>
   <p>Fall 2026 as a little game world. Here is everything in it, island by island.</p>
+  <p id="flight-fallback" role="status" hidden>The flight could not start in this browser. All eight stories are here to read, with no game required. <a href="">Try loading the flight again</a>.</p>
+  <p class="pilot-invitation" hidden>Cale, welcome aboard. Take a joyride, try a little catch, or just read at your own pace.</p>
+  <nav class="story-nav" aria-label="Read an island"><a href="#sf">San Francisco</a><a href="#blizzard">Blizzard</a><a href="#teach">USC</a><a href="#ggp">GGP</a><a href="#bass">Bass season</a><a href="#dodge">Dodgeball</a><a href="#ps">Palm Springs</a><a href="#home">Home</a></nav>
 </header>
 
 <main class="book" id="book">
@@ -605,6 +612,7 @@ button{font:inherit;color:inherit;cursor:pointer}
       <h2>Island <em>Hop</em></h2>
       <p class="mono forfriends">A little lift. A world to explore.</p>
       <p>Lift through the rings, pick an island, bring a little joy home. Gordon's fall 2026 as eight floating islands, each with a toy to play.</p>
+      <p class="pilot-invitation" hidden>Cale, welcome aboard. Take a joyride, try a little catch, or just read at your own pace.</p>
       <div class="row primary"><button class="btn go" id="joyride" type="button">▶ Take a joyride</button></div>
       <div class="row"><button class="btn" id="go" type="button">Fly free</button><button class="btn" id="read" type="button">Just read it</button><button class="btn" id="soundOpt" type="button" aria-pressed="false">♪ Add sound</button></div>
       <details class="more" id="more">
@@ -684,6 +692,9 @@ button{font:inherit;color:inherit;cursor:pointer}
   document.getElementById('seenBtn').onclick=openSeen;document.getElementById('seenBtn2').onclick=openSeen;
 })();
 </script>
-<script type="module" src="game.js"></script>
+<script src="flight-access.js"></script>
+<script type="module">
+import('./game.js').catch(function(){window.islandHopReadFallback();});
+</script>
 </body>
 </html>
